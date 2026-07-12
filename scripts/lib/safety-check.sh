@@ -13,7 +13,15 @@ LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # 기본 PROTECTED_PATHS
 DEFAULT_PROTECTED_PATHS='.git .env .env.local .env.*.local *.pem *.key *credential* *secret* *password* node_modules dist build __pycache__ .venv'
 
-DEFAULT_FORBIDDEN_PATTERNS='AKIA[0-9A-Z]{16} sk-[a-zA-Z0-9]{20,} -----BEGIN .* PRIVATE KEY----- Bearer [A-Za-z0-9._-]{20,} eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+'
+# 주의: 각 패턴이 공백을 포함할 수 있으므로(예: "-----BEGIN .* PRIVATE KEY-----")
+# 반드시 줄바꿈으로만 구분한다. 공백으로 나누면 셸이 단어를 쪼개고,
+# ".*" 같은 조각은 unquoted 루프에서 glob으로도 확장되어(예: "." ".." ".git")
+# 원래 정규식과 무관한 값이 패턴인 것처럼 취급되는 사고가 난다.
+DEFAULT_FORBIDDEN_PATTERNS='AKIA[0-9A-Z]{16}
+sk-[a-zA-Z0-9]{20,}
+-----BEGIN .* PRIVATE KEY-----
+Bearer [A-Za-z0-9._-]{20,}
+eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+'
 
 MAX_FILE_BYTES="${KANT_MAX_FILE_BYTES:-10485760}"  # 10MB
 
@@ -55,6 +63,9 @@ check_protected_paths() {
 
     local matched=""
     local pattern
+    # PROTECTED_PATHS 항목 자체가 글롭(*.pem 등)이므로, 이 루프에서
+    # 셸이 그 글롭을 실제 파일 목록으로 확장해버리면 안 된다 (set -f로 차단).
+    set -f
     # shellcheck disable=SC2086
     for pattern in $protected; do
       # glob 매칭: 패턴을 */패턴* 형태로 검사
@@ -70,6 +81,7 @@ check_protected_paths() {
           ;;
       esac
     done
+    set +f
 
     if [ -n "$matched" ]; then
       violation="${violation}${file} (matches: ${matched})\n"
@@ -116,13 +128,15 @@ check_forbidden_patterns() {
   local forbidden="${FORBIDDEN_PATTERNS:-$DEFAULT_FORBIDDEN_PATTERNS}"
   local violation=""
 
+  # 패턴 자체에 공백이 들어있을 수 있어(예: "Bearer [A-Za-z0-9._-]{20,}")
+  # 반드시 줄 단위로만 나눈다 — 단어 분리/glob 확장 둘 다 절대 일어나면 안 됨.
   local pattern
-  # shellcheck disable=SC2086
-  for pattern in $forbidden; do
+  while IFS= read -r pattern; do
+    [ -z "$pattern" ] && continue
     if printf '%s' "$diff_content" | grep -qE "$pattern"; then
       violation="${violation}pattern: $pattern\n"
     fi
-  done
+  done <<< "$forbidden"
 
   if [ -n "$violation" ]; then
     printf '%b' "$violation"
@@ -316,8 +330,8 @@ safety-check.sh — protected paths / forbidden patterns / file sizes 검사
   safety-check.sh self-test             # 스크립트 내부 grep 검사
 
 env:
-  PROTECTED_PATHS (default: .git .env *.pem *.key *credential* *secret* ...)
-  FORBIDDEN_PATTERNS (default: AWS / API key / PEM / Bearer / JWT)
+  PROTECTED_PATHS (공백 구분, default: .git .env *.pem *.key *credential* *secret* ...)
+  FORBIDDEN_PATTERNS (줄바꿈 구분 — 패턴 자체에 공백이 들어갈 수 있음, default: AWS / API key / PEM / Bearer / JWT)
   KANT_MAX_FILE_BYTES (default 10485760 = 10MB)
 EOF
 exit 0

@@ -153,6 +153,15 @@ task_to_slug() {
 
 do_safety_check() {
   local worktree="$1"
+
+  # 검사/커밋 전 반드시 스테이징한다. 이게 빠지면 두 가지가 조용히 깨진다:
+  #   1) check_forbidden_patterns()가 git diff(--cached 포함)만 보므로,
+  #      한 번도 add되지 않은 신규(untracked) 파일 안의 시크릿/키 패턴을 전혀 스캔하지 못한다.
+  #   2) do_commit()이 "git diff --cached"로 staged_hash를 계산하고 git commit을 실행하는데,
+  #      스테이징된 게 없으면 커밋할 게 없어 COMMIT_FAILED로 조용히 실패한다.
+  # (실측: 신규 파일만 생성하는 작업에서 verdict=PASS인데도 커밋이 전부 실패했음)
+  (cd "$worktree" && git add -A)
+
   "$LIB_DIR/safety-check.sh" all "$worktree"
 }
 
