@@ -73,6 +73,10 @@ fallback_2: glm-5.2
 final:      claude
 ```
 
+agy는 `--sandbox`/`--add-dir`/`--dangerously-skip-permissions`의 실제 동작이 이름만
+보고 짐작하기 쉽지 않다 (예: `--sandbox`는 파일 쓰기를 안 막음). adapter-agy.sh를
+건드리거나 agy 라우팅을 조정하기 전에 `references/agy-cli-notes.md`를 먼저 볼 것.
+
 ### claude (subagent)
 
 ```

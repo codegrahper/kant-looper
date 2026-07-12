@@ -156,7 +156,8 @@ main에 합치시려면:
 │   ├── verdict-schema.md                         # JSON verdict 스키마
 │   ├── safety-promises.md                        # 안전 약속 전체
 │   ├── failure-modes.md                          # 실패 모드 + 무진전 감지
-│   └── fallback-table.md                         # 도구별 fallback 체인
+│   ├── fallback-table.md                         # 도구별 fallback 체인
+│   └── agy-cli-notes.md                          # agy(Antigravity) CLI 실전 노트 — sandbox/mode/모델ID 등
 ├── scripts/
 │   ├── kant-loop.sh                              # 메인 백엔드
 │   ├── adapters/                                 # 5개 어댑터 (codex/grok/opencode/agy/claude)
