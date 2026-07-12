@@ -60,7 +60,10 @@ parse_routing_guide() {
 
   # 동적 변수 정의 (캐시 파일에 저장)
   local primary_luna primary_terra primary_sol primary_glm52 primary_grok45 primary_gemini35flash
-  local model_kant_minimax
+  local primary_glm47 primary_glm5turbo primary_glm47flashx primary_glm5vturbo
+  local primary_grokbuild
+  local primary_gemini31pro primary_gemini31lite
+  local primary_claude_m3 primary_claude_m27 primary_claude_m27hs
   local route_tiny route_standard route_hard route_huge route_visual route_review
 
   primary_luna="$(grep -E 'gpt-5\.6-luna' "$ROUTING_GUIDE" | head -1 | grep -oE 'gpt-5\.6-luna' || echo 'gpt-5.6-luna')"
@@ -69,7 +72,18 @@ parse_routing_guide() {
   primary_glm52="$(grep -E 'glm-5\.2[^.]' "$ROUTING_GUIDE" | head -1 | grep -oE 'glm-5\.2' || echo 'glm-5.2')"
   primary_grok45="$(grep -E 'grok-4\.5' "$ROUTING_GUIDE" | head -1 | grep -oE 'grok-4\.5' || echo 'grok-4.5')"
   primary_gemini35flash="$(grep -E 'gemini-3\.5-flash' "$ROUTING_GUIDE" | head -1 | grep -oE 'gemini-3\.5-flash' || echo 'gemini-3.5-flash')"
-  model_kant_minimax="MiniMax-M3"
+
+  # §3~§7 전체 모델 레지스트리 추출 (메타 에이전트 참조용)
+  primary_glm47="$(grep -E 'glm-4\.7[^-]' "$ROUTING_GUIDE" | head -1 | grep -oE 'glm-4\.7' || echo 'glm-4.7')"
+  primary_glm5turbo="$(grep -E 'glm-5-turbo' "$ROUTING_GUIDE" | head -1 | grep -oE 'glm-5-turbo' || echo 'glm-5-turbo')"
+  primary_glm47flashx="$(grep -E 'glm-4\.7-flashx' "$ROUTING_GUIDE" | head -1 | grep -oE 'glm-4\.7-flashx' || echo 'glm-4.7-flashx')"
+  primary_glm5vturbo="$(grep -E 'glm-5v-turbo' "$ROUTING_GUIDE" | head -1 | grep -oE 'glm-5v-turbo' || echo 'glm-5v-turbo')"
+  primary_grokbuild="$(grep -E 'grok-build-0\.1' "$ROUTING_GUIDE" | head -1 | grep -oE 'grok-build-0\.1' || echo 'grok-build-0.1')"
+  primary_gemini31pro="$(grep -E 'gemini-3\.1-pro-preview' "$ROUTING_GUIDE" | head -1 | grep -oE 'gemini-3\.1-pro-preview' || echo 'gemini-3.1-pro-preview')"
+  primary_gemini31lite="$(grep -E 'gemini-3\.1-flash-lite' "$ROUTING_GUIDE" | head -1 | grep -oE 'gemini-3\.1-flash-lite' || echo 'gemini-3.1-flash-lite')"
+  primary_claude_m3="$(grep -E 'MiniMax-M3' "$ROUTING_GUIDE" | head -1 | grep -oE 'MiniMax-M3' || echo 'MiniMax-M3')"
+  primary_claude_m27="$(grep -E 'MiniMax-M2\.7[^-]' "$ROUTING_GUIDE" | head -1 | grep -oE 'MiniMax-M2\.7' | head -1 || echo 'MiniMax-M2.7')"
+  primary_claude_m27hs="$(grep -E 'MiniMax-M2\.7-highspeed' "$ROUTING_GUIDE" | head -1 | grep -oE 'MiniMax-M2\.7-highspeed' || echo 'MiniMax-M2.7-highspeed')"
 
   # 캐시 파일 생성
   cat > "$GUIDE_CACHE" <<EOF
@@ -81,7 +95,26 @@ KANT_PRIMARY_SOL="$primary_sol"
 KANT_PRIMARY_GLM52="$primary_glm52"
 KANT_PRIMARY_GROK45="$primary_grok45"
 KANT_PRIMARY_GEMINI35FLASH="$primary_gemini35flash"
-KANT_CLAUDE_MODEL="$model_kant_minimax"
+KANT_CLAUDE_MODEL="$primary_claude_m3"
+
+# §3~§7 전체 모델 레지스트리 (메타 에이전트 참조용)
+KANT_PRIMARY_GLM47="$primary_glm47"
+KANT_PRIMARY_GLM5TURBO="$primary_glm5turbo"
+KANT_PRIMARY_GLM47FLASHX="$primary_glm47flashx"
+KANT_PRIMARY_GLM5VTURBO="$primary_glm5vturbo"
+KANT_PRIMARY_GROKBUILD="$primary_grokbuild"
+KANT_PRIMARY_GEMINI31PRO="$primary_gemini31pro"
+KANT_PRIMARY_GEMINI31LITE="$primary_gemini31lite"
+KANT_PRIMARY_CLAUDE_M3="$primary_claude_m3"
+KANT_PRIMARY_CLAUDE_M27="$primary_claude_m27"
+KANT_PRIMARY_CLAUDE_M27HS="$primary_claude_m27hs"
+
+# §17.2 강점 태그 (메타 에이전트 빠른 매칭용)
+KANT_TAG_CODING_MODELS="gpt-5.6-sol gpt-5.6-terra glm-5.2 grok-4.5 gemini-3.5-flash"
+KANT_TAG_FRONTEND_MODELS="gemini-3.5-flash glm-5v-turbo gemini-3.1-pro-preview"
+KANT_TAG_KOREAN_MODELS="gpt-5.6-sol gpt-5.6-terra MiniMax-M3 MiniMax-M2.7"
+KANT_TAG_FAST_MODELS="gpt-5.6-luna glm-4.7-flashx gemini-3.1-flash-lite grok-4.5"
+KANT_TAG_HUGE_CONTEXT_MODELS="glm-5.2 MiniMax-M3"
 
 KANT_ROUTE_TINY_PRIMARY="$primary_luna"
 KANT_ROUTE_STANDARD_PRIMARY="$primary_terra"
@@ -236,6 +269,23 @@ KANT_PRIMARY_GLM52=$KANT_PRIMARY_GLM52
 KANT_PRIMARY_GROK45=$KANT_PRIMARY_GROK45
 KANT_PRIMARY_GEMINI35FLASH=$KANT_PRIMARY_GEMINI35FLASH
 KANT_CLAUDE_MODEL=$KANT_CLAUDE_MODEL
+--- full registry ---
+KANT_PRIMARY_GLM47=$KANT_PRIMARY_GLM47
+KANT_PRIMARY_GLM5TURBO=$KANT_PRIMARY_GLM5TURBO
+KANT_PRIMARY_GLM47FLASHX=$KANT_PRIMARY_GLM47FLASHX
+KANT_PRIMARY_GLM5VTURBO=$KANT_PRIMARY_GLM5VTURBO
+KANT_PRIMARY_GROKBUILD=$KANT_PRIMARY_GROKBUILD
+KANT_PRIMARY_GEMINI31PRO=$KANT_PRIMARY_GEMINI31PRO
+KANT_PRIMARY_GEMINI31LITE=$KANT_PRIMARY_GEMINI31LITE
+KANT_PRIMARY_CLAUDE_M3=$KANT_PRIMARY_CLAUDE_M3
+KANT_PRIMARY_CLAUDE_M27=$KANT_PRIMARY_CLAUDE_M27
+KANT_PRIMARY_CLAUDE_M27HS=$KANT_PRIMARY_CLAUDE_M27HS
+--- tags ---
+KANT_TAG_CODING_MODELS=$KANT_TAG_CODING_MODELS
+KANT_TAG_FRONTEND_MODELS=$KANT_TAG_FRONTEND_MODELS
+KANT_TAG_KOREAN_MODELS=$KANT_TAG_KOREAN_MODELS
+KANT_TAG_FAST_MODELS=$KANT_TAG_FAST_MODELS
+KANT_TAG_HUGE_CONTEXT_MODELS=$KANT_TAG_HUGE_CONTEXT_MODELS
 EOF
   exit 0
 fi
