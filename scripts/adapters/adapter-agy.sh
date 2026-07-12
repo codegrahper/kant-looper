@@ -50,19 +50,32 @@ call() {
   local timeout
   timeout=$("$SKILL_LIB/timeout-runner.sh" timeout-for "$role")
 
-  # role에 따른 sandbox 모드 결정
+  # role에 따른 sandbox/실행 모드 결정
   # - plan / review / verify: read-only (안전)
   # - implement / repair: workspace-write (파일 변경 필요)
-  local sandbox_mode
+  #
+  # 주의(2026-07-12 수정): agy --help 기준 --sandbox는 "터미널 제한"만 걸고
+  # 파일 쓰기 도구는 막지 않는다. 파일 쓰기를 막는 건 --mode plan 뿐이다.
+  # --dangerously-skip-permissions는 모든 도구 권한 요청(편집 포함)을 자동
+  # 승인해버리므로, read-only 롤에서는 절대 함께 쓰면 안 된다.
+  # (실측: --sandbox read-only + --dangerously-skip-permissions 조합으로
+  #  hello-world 테스트 중 agy가 스킬 스크립트 5개를 실제로 수정한 사고 발생)
+  local sandbox_mode agy_mode skip_permissions
   case "$role" in
     plan|review|verify)
       sandbox_mode="read-only"
+      agy_mode="plan"
+      skip_permissions=0
       ;;
     implement|repair)
       sandbox_mode="workspace-write"
+      agy_mode="accept-edits"
+      skip_permissions=1
       ;;
     *)
       sandbox_mode="read-only"
+      agy_mode="plan"
+      skip_permissions=0
       ;;
   esac
 
@@ -74,10 +87,14 @@ call() {
     agy
     --add-dir "$worktree"
     --model "$model"
-    --dangerously-skip-permissions
     --print
     --sandbox "$sandbox_mode"
+    --mode "$agy_mode"
   )
+
+  if [ "$skip_permissions" = "1" ]; then
+    cmd+=( --dangerously-skip-permissions )
+  fi
 
   # 추가 옵션: 터미널/브라우저 권한 (보안 기본값은 차단)
   if [ "$allow_browser" = "0" ] && agy --help 2>&1 | grep -q -- '--no-browser'; then
