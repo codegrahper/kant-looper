@@ -10,6 +10,37 @@ Codex, Claude, Grok, OpenCode, Antigravity 같은 도구를 직접 대체하는 
 
 Kant Looper의 메인 백엔드는 `kant-loop.sh`이며, 작업 실행뿐 아니라 사전 검사, 상태 확인, 결과 보고, 작업 브랜치 승격, 정리 등의 명령을 제공합니다. 자동 push, main 브랜치 직접 커밋, 강제 reset이나 rebase 같은 위험 작업은 금지하도록 설계되어 있습니다.
 
+## 요구사항
+
+- macOS (bash 3.2 호환, `git worktree` 사용)
+- `git`
+- 최소 1개 이상의 외부 코딩 에이전트 CLI: `codex`(OpenAI), `claude`(Anthropic), `grok`(xAI), `opencode`(GLM 등), `agy`(Antigravity/Gemini)
+  설치되지 않은 도구는 health-check가 자동으로 우회하고, 전부 실패하면 `claude`가 최종 폴백으로 동작합니다.
+
+## 빠른 시작
+
+```bash
+# 환경 검사만 (side-effect 없음)
+scripts/kant-loop.sh preflight TASK.md
+
+# 드라이런 — 라우팅/브랜치명만 확인, 실제 실행 X
+scripts/kant-loop.sh run TASK.md --dry-run
+
+# 가벼운 작업: 단일 도구 한 번 호출
+scripts/kant-loop.sh run TASK.md --quick --agent codex --model gpt-5.6-terra
+
+# 복잡한 작업: plan → implement → gate → review 풀 루프 (기본값)
+scripts/kant-loop.sh run TASK.md
+
+# 실행 상태 확인
+scripts/kant-loop.sh status --latest
+
+# main 병합은 사용자가 직접 실행 (자동으로 일어나지 않음)
+scripts/kant-loop.sh promote agent/kant/<run-id> --target main
+```
+
+`TASK.md`에는 `## 목표` 또는 `## Goal` 섹션이 반드시 있어야 합니다. `--quick`/`--parallel`/`--full` 모드와 전체 옵션은 [SKILL.md](SKILL.md)를 참고하세요.
+
 ## 어떤 일을 하는 스크립트인가
 
 사용자가 `TASK.md`에 목표와 작업 범위를 작성하면 Kant Looper는 대체로 다음 과정을 진행합니다.
