@@ -61,7 +61,24 @@ call() {
   local timeout
   timeout=$("$SKILL_LIB/timeout-runner.sh" timeout-for "$role")
 
+  # opencode는 "provider/model" 형태를 요구한다 (예: opencode-go/glm-5.2).
+  # bare 이름("glm-5.2", "glm-4.7" 등)이 들어오면 ProviderModelNotFoundError 발생.
+  # 이미 "/"를含む 이름은 정규화 없이 그대로 사용.
   local variant="${KANT_OPENCODE_VARIANT:-high}"
+
+  local glm_provider="${KANT_OPENCODE_GLM_PROVIDER:-opencode-go}"
+  local normalized_model="$model"
+  if ! printf '%s' "$model" | grep -q '/'; then
+    case "$model" in
+      glm-4.*|glm-5.*)
+        normalized_model="${glm_provider}/${model}"
+        ;;
+      *)
+        # 알 수 없는 bare 이름은 로그만 남기고 그대로 시도 (다른 프로바이더일 수 있음)
+        echo "[adapter-opencode] WARN: bare model name '$model' — passing as-is (opencode may fail with ProviderModelNotFoundError)" >&2
+        ;;
+    esac
+  fi
 
   # role에 따른 권한 모드 결정
   # - plan / review / verify: --auto 없이 (read-only 동작)
@@ -76,7 +93,7 @@ call() {
 
   local cmd=(
     opencode run
-    -m "$model"
+    -m "$normalized_model"
     --format json
     --print-logs
     --log-level INFO

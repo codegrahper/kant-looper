@@ -83,6 +83,33 @@ call() {
       ;;
   esac
 
+  # sandbox 프로필 가용성 검증
+  # ~/.grok/sandbox.toml이 없거나 요청된 프로필이 정의되지 않은 경우
+  # --sandbox 플래그를 전달하면 grok이 실행 자체를 거부한다.
+  # (실측: "workspace-write" 프로필 부재 시 error: could not apply the
+  # 'workspace-write' sandbox profile — calculator.py 생성+실행은 --sandbox
+  # 없이 정상 동작 확인)
+  #
+  # 안전 장치: timeout-runner.sh가 subprocess의 cwd를 worktree로 강제 격리
+  # (process group 분리 + cwd 정규화). grok sandbox를 사용할 수 없을 때의
+  # 대안이지 동등한 OS-level sandbox는 아님. implement/repair role에서는
+  # permission_mode=acceptEdits + Edit/Bash 허용이므로 safety-check.sh가
+  # 최종 안전망으로 동작한다.
+  local sandbox_args=()
+  local sandbox_toml="${HOME}/.grok/sandbox.toml"
+  if [ -f "$sandbox_toml" ]; then
+    # sandbox.toml이 존재: 요청된 프로필이 [profile-name] 섹션으로 정의되어 있는지 확인
+    # POSIX 호환 grep 사용 (\s 대신 [[:space:]] — macOS bash 3.2 + grep 호환)
+    if grep -qE "^[[:space:]]*\\[[[:space:]]*${sandbox_mode}[[:space:]]*\\][[:space:]]*([#].*)?$" "$sandbox_toml" 2>/dev/null; then
+      sandbox_args=(--sandbox "$sandbox_mode")
+    else
+      echo "[adapter-grok] WARN: sandbox profile '$sandbox_mode' not found in $sandbox_toml — omitting --sandbox flag (cwd constrained by timeout-runner)" >&2
+    fi
+  else
+    # sandbox.toml 자체가 없으면 sandbox 프로필을 사용할 수 없음
+    echo "[adapter-grok] WARN: $sandbox_toml not found — omitting --sandbox flag (cwd constrained by timeout-runner)" >&2
+  fi
+
   # Grok은 prompt를 -p 인자로 받음. 임시 파일에서 stdin 파이프도 가능.
   local cmd=(
     grok
@@ -94,35 +121,33 @@ call() {
     --verbatim
     --disable-web-search
     --no-subagents
-    --sandbox "$sandbox_mode"
     --permission-mode "$permission_mode"
     --allow Read
     --allow Grep
   )
 
+  # sandbox가 검증된 경우에만 플래그 추가 (빈 배열이면 아무것도 안 함)
+  if [ ${#sandbox_args[@]} -gt 0 ]; then
+    cmd+=( "${sandbox_args[@]}" )
+  fi
+
   # json-schema 추가 (옵션)
   if [ -f "$schema_file" ]; then
     cmd+=( --json-schema "$schema_file" )
   fi
 
-  # implement/repair 단계에서 Edit/Bash 일부 허용
   if [ -n "$allow_extra" ]; then
     IFS=' ' read -ra extras <<< "$allow_extra"
     cmd+=( "${extras[@]}" )
   fi
 
-  # reasoning effort (grok-4.5 이상에서 유효)
-  local effort="${KANT_GROK_REASONING_EFFORT:-high}"
-  if printf '%s' "$model" | grep -qE 'grok-4\.'; then
-    cmd+=( --reasoning-effort "$effort" )
-  fi
+  case "$role" in
+    plan|review|verify)
+      cmd+=( --deny 'Bash(*)' --deny 'Edit(*)' )
+      ;;
+  esac
 
-  # json-schema 추가 (옵션)
-  if [ -f "$schema_file" ]; then
-    cmd+=( --json-schema "$schema_file" )
-  fi
-
-  # reasoning effort (grok-4.5 이상에서 유효)
+  # reasoning effort (grok-4.x 이상에서 유효)
   local effort="${KANT_GROK_REASONING_EFFORT:-high}"
   if printf '%s' "$model" | grep -qE 'grok-4\.'; then
     cmd+=( --reasoning-effort "$effort" )
