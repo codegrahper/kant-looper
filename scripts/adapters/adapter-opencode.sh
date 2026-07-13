@@ -119,10 +119,7 @@ call() {
   fi
 
   local json_text
-  # opencode는 JSON 이벤트 스트림을 출력 (각 라인이 별도 JSON 객체).
-  # 첫 valid JSON을 추출하면 step-start 같은 이벤트가 잡혀 verdict가 빠짐.
-  # 모든 이벤트를 파싱해서 마지막 type:text 객체의 verdict를 추출.
-  json_text="$(python3 - <<'PYEOF' "$response_file" 2>/dev/null || true
+  json_text="$(python3 - "$response_file" <<'PYEOF' 2>/dev/null || true
 import json, re, sys
 
 path = sys.argv[1]
@@ -137,23 +134,57 @@ for line in open(path, errors='ignore'):
             t = e.get('part', {}).get('text')
             if t:
                 last_text = t
-    except (json.JSONDecodeError, KeyError, TypeError):
+    except Exception:
         continue
 
 if not last_text:
     sys.exit(1)
 
-# 1. 코드블록 안의 JSON
+# Try ```json ... ``` block first
 m = re.search(r'```json\s*(\{.*?\})\s*```', last_text, re.DOTALL)
 if m:
     try:
         json.loads(m.group(1))
-        print(m.group(1))
+        print(m.group(1), end='')
         sys.exit(0)
     except json.JSONDecodeError:
         pass
 
-# 2. <verdict> 태그
+# Extract text before <verdict> tag and find JSON using brace-counting
+verdict_text = last_text
+vidx = last_text.rfind('<verdict>')
+if vidx >= 0:
+    verdict_text = last_text[:vidx]
+
+depth, in_str, escape, start = 0, False, False, -1
+for i, ch in enumerate(verdict_text):
+    if escape:
+        escape = False
+        continue
+    if in_str:
+        if ch == '\\':
+            escape = True
+        elif ch == '"':
+            in_str = False
+        continue
+    if ch == '"':
+        in_str = True
+    elif ch == '{':
+        if depth == 0:
+            start = i
+        depth += 1
+    elif ch == '}':
+        depth -= 1
+        if depth == 0 and start >= 0:
+            candidate = verdict_text[start:i+1]
+            try:
+                json.loads(candidate)
+                print(candidate, end='')
+                sys.exit(0)
+            except json.JSONDecodeError:
+                start = -1
+
+# Fallback: extract <verdict> tag
 m2 = re.search(r'<verdict>(\w+)</verdict>', last_text)
 if m2:
     print(json.dumps({
@@ -164,7 +195,7 @@ if m2:
         "tests_added_or_updated": [],
         "risks": [],
         "notes_for_reviewer": ""
-    }))
+    }), end='')
     sys.exit(0)
 
 sys.exit(1)
@@ -185,6 +216,40 @@ PYEOF
 
   local verdict
   verdict=$("$SKILL_LIB/verdict-extractor.sh" validate "$json_text")
+
+  # changed_files를 모델의 자기 보고가 아니라 git diff 실측값으로 교체한다.
+  # 모델이 파일을 생성했다고 주장해도 실제로 생성되지 않을 수 있고 (opencode-go/glm-5.2 run 1),
+  # <verdict> 태그 폴백 경로는 changed_files를 빈 배열로 hardcode한다.
+  # git diff로 실제 변경 목록을 구해 verdict JSON을 패치한다.
+  local actual_changed
+  actual_changed="$(cd "$worktree" && {
+    git diff --name-only --cached 2>/dev/null
+    git diff --name-only 2>/dev/null
+    git ls-files --others --exclude-standard 2>/dev/null
+  } | sort -u | python3 -c "
+import json, sys
+files = [f.strip() for f in sys.stdin if f.strip() and not f.startswith('.kant-looper') and not f.startswith('.omo')]
+print(json.dumps(files))
+" 2>/dev/null || echo '[]')"
+
+  local patch_script
+  patch_script="$(mktemp).py"
+  printf '%s' '
+import json, sys
+jpath, apath = sys.argv[1], sys.argv[2]
+with open(jpath) as f:
+    d = json.load(f)
+with open(apath) as f:
+    d["changed_files"] = json.load(f)
+print(json.dumps(d, ensure_ascii=False))
+' > "$patch_script"
+  local json_tmp ac_tmp
+  json_tmp="$(mktemp)"
+  ac_tmp="$(mktemp)"
+  printf '%s' "$json_text" > "$json_tmp"
+  printf '%s' "$actual_changed" > "$ac_tmp"
+  json_text="$(python3 "$patch_script" "$json_tmp" "$ac_tmp" 2>/dev/null || printf '%s' "$json_text")"
+  rm -f "$json_tmp" "$ac_tmp" "$patch_script"
 
   local json_path="$io_dir/opencode-${role}.json"
   printf '%s' "$json_text" > "$json_path"

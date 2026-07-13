@@ -327,7 +327,7 @@ $(cat "$task_md")
 ---
 
 ## 보고 형식 (반드시 지킬 것)
-너의 응답은 아래 JSON 객체 하나만 출력한다. JSON 바깥에 다른 텍스트를 절대 붙이지 마라.
+너의 응답은 아래 JSON 객체로 응답한다. JSON 바깥에 다른 텍스트를 절대 붙이지 마라.
 
 {
   "verdict": "PASS|CHANGES_REQUESTED|BLOCKED|INVALID_OUTPUT",
@@ -340,6 +340,11 @@ $(cat "$task_md")
 }
 
 마지막 줄에 <verdict>{PASS|CHANGES_REQUESTED|BLOCKED}</verdict> 태그도 함께 출력한다.
+
+## 중요: 재시도 루프 방지
+- 도구를 실행(tool call)한 직후에도 반드시 위에 정의한 JSON 포맷으로 응답을 출력해야 한다.
+- 도구 실행 후 응답을 출력하지 않고 끝나지 마라. 반드시 JSON과 <verdict> 태그를 포함한 응답을 작성해야 한다.
+- retry loop(재시도 루프)가 발생하지 않도록, 한 번의 구현 후 즉시 위 포맷으로 응답을 출력한다.
 EOF
 
   local adapter="$ADAPTERS_DIR/adapter-${tool}.sh"
