@@ -306,13 +306,23 @@ EOF
     local fallback_result
     fallback_result=$("$LIB_DIR/fallback-dispatcher.sh" run "$tool" "$model" "$failure_mode" "$prompt_file" "$worktree" "implement" 2>>"$state_dir/phase-events.log" || echo "")
 
-    if [ -n "$fallback_result" ] && [[ "$fallback_result" != FAIL:* ]]; then
-      log_event "$state_dir" "FALLBACK_USED result=$fallback_result"
-      output="$fallback_result"
-    else
-      fail_run "$state_dir" "QUICK_CALL_FAILED" "$tool:$model mode=$failure_mode exit=$rc (fallback exhausted)"
-      return 1
-    fi
+    # FIX (2026-07-13): fallback_result가 정상 verdict|json_path 형식인지 검증.
+    # 이전 로직은 단순히 "FAIL:"로 시작하지 않으면 통과시켰는데, fallback-dispatcher가
+    # tool:model 형식으로 출력할 때(예전 버그) caller가 그대로 verdict로 파싱하는 사고가
+    # 있었음. 형식이 verdict|json_path인지 확인.
+    local fb_verdict_check="${fallback_result%%|*}"
+    case "$fb_verdict_check" in
+      PASS|CHANGES_REQUESTED|BLOCKED|INVALID_OUTPUT)
+        log_event "$state_dir" "FALLBACK_USED result=$fallback_result"
+        output="$fallback_result"
+        ;;
+      *)
+        # 정상 verdict 형식이 아님 — fallback 실패로 간주
+        log_event "$state_dir" "FALLBACK_INVALID result=$fallback_result"
+        fail_run "$state_dir" "QUICK_CALL_FAILED" "$tool:$model mode=$failure_mode exit=$rc (fallback returned malformed: $fallback_result)"
+        return 1
+        ;;
+    esac
   fi
 
   local verdict="${output%%|*}"

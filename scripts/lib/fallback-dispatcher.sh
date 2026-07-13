@@ -140,8 +140,11 @@ do_fallback() {
       if fb_output="$("$LIB_DIR/../adapters/adapter-$next_tool.sh" call "$role" "$prompt_file" "$worktree" "$next_model")"; then
         fb_verdict="${fb_output%%|*}"
         if [ "$fb_verdict" = "PASS" ]; then
-          echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] fallback SUCCESS: $next_tool:$next_model" >> "$FALLBACK_LOG"
-          echo "${next_tool}:${next_model}"
+          echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] fallback SUCCESS: $next_tool:$next_model (verdict=json_path)" >> "$FALLBACK_LOG"
+          # FIX (2026-07-13): 어댑터의 PASS|json_path 결과를 그대로 반환.
+          # 이전 코드는 tool:model 형식으로 바꿔서 출력했는데, caller가 verdict로
+          # 파싱하면서 PASS가 아닌 tool 이름으로 인식해 실패 처리됐음.
+          echo "$fb_output"
           return 0
         else
           echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] fallback NOT_PASS: $next_tool:$next_model verdict=$fb_verdict (다음 fallback 시도)" >> "$FALLBACK_LOG"

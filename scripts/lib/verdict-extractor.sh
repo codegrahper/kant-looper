@@ -139,20 +139,15 @@ validate_verdict_json() {
     esac
   fi
 
-  # jq 없으면 단순 grep
-  if printf '%s' "$json_text" | grep -qE '"verdict"[[:space:]]*:[[:space:]]*"PASS"'; then
-    echo "PASS"
-    return 0
+  # FIX (2026-07-13): jq 부재 시 fail-closed. grep 정규식은 정확도 보장 어렵고
+  # (top-level 매칭이 너무 엄격하거나 너무 느슨하면 오탐). jq 없으면 명확히 INVALID_OUTPUT +
+  # 설치 권장.
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "[verdict-extractor] FAIL-CLOSED: jq 미설치. verdict 검증 불가. 'brew install jq' 권장." >&2
+    echo "INVALID_OUTPUT"
+    return 1
   fi
-  if printf '%s' "$json_text" | grep -qE '"verdict"[[:space:]]*:[[:space:]]*"CHANGES_REQUESTED"'; then
-    echo "CHANGES_REQUESTED"
-    return 0
-  fi
-  if printf '%s' "$json_text" | grep -qE '"verdict"[[:space:]]*:[[:space:]]*"BLOCKED"'; then
-    echo "BLOCKED"
-    return 0
-  fi
-
+  # jq가 있으면 위쪽 jq 경로가 이미 정상 verdict를 반환함. 여기 도달하면 알 수 없는 verdict.
   echo "INVALID_OUTPUT"
   return 1
 }
