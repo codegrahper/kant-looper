@@ -756,3 +756,63 @@ MCP·보안 정책: 분기 1회
 - **`latest` 별칭**: 내부 모델이 교체될 수 있음. Stable ID 우선.
 - **Computer Use**: 화면 변화에 취약. DOM·접근성 트리 우선.
 - **AGY 하네스**: AGY 자체의 장애와 Gemini 모델의 장애를 별도 추적.
+
+---
+
+## 18. Codex 런타임 정책
+
+`sections/skills-directory/skill-codex`와 Hermes Codex app-server 런타임을 차용.
+
+### 18.1 흡수한 3가지 규칙
+
+1. **headless 실행은 `codex exec`** — 비대화형 모드. 진행은 stderr, 최종 응답은 stdout.
+2. **백그라운드는 stdin을 `</dev/null`로 명시 차단** — Codex가 stdin 대기하며 무한 hang하는 것 방지.
+3. **Codex 출력을 Kant가 독립 검증** — Codex의 "완료했습니다"를 그대로 신뢰하지 않음. safety-check.sh + gate-runner로 재검증.
+
+### 18.2 adapter-codex.sh 적용
+
+```bash
+cmd=(
+  codex exec
+  --json
+  -o "$response_file"
+  -s "$sandbox_mode"
+  -C "$worktree"
+  -m "$model"
+  --skip-git-repo-check      # 비-git 환경 호환
+)
+# detached 모드:
+cmd+=( -c "approval_policy=never" )
+
+runner_output="$("$timeout_runner" run ... "${cmd[@]}" </dev/null)"
+```
+
+### 18.3 detached 모드 approval 정책
+
+`KANT_DETACHED=1` 환경변수로 어댑터에 알림. detached에서는:
+- `approval_policy=never` — Codex가 server-initiated approval 요청 안 보냄
+- `workspace_write` sandbox 경계는 그대로 유지 — worktree 밖 접근은 실패
+- Kant의 `safety-check.sh`가 별도로 protected paths / forbidden patterns 검사
+
+이는 안전 약속 5개(자동 push 금지 등)와 양립. Codex의 자동 승인은 sandbox 안에서만 발생.
+
+### 18.4 사용 예
+
+```bash
+# foreground (사용자 개입 가능)
+kant-loop.sh run TASK.md --quick --agent codex
+
+# detached (사용자 부재, 자동 진행)
+KANT_DETACHED=1 kant-loop.sh run TASK.md --quick --agent codex --detach
+```
+
+### 18.5 향후 단계 (Goal 3, 4)
+
+- **Goal 3**: Python `codex-app-server-client.py` 추가 — JSON-RPC over stdio. thread resume + 실시간 이벤트 + 서버 initiated approval 자동 처리. process scope = per_run.
+- **Goal 4**: 안정성 검증(20회+ 테스트, process crash recovery, worktree 밖 파일 차단) 후 `codex exec` → `app-server` 기본값 전환. `app-server` 장애 시 `codex exec`로 fallback.
+
+### 18.6 제외 사항
+
+- `--full-auto` 사용 금지 (deprecated 호환 옵션). 명시적 sandbox + approval policy 사용.
+- Kant를 MCP 서버로 노출 금지 (재귀 오케스트레이션 위험).
+- Codex 내부 `review/start`를 Kant의 최종 리뷰로 사용 금지 (provider_must_differ_from_implementer 위반).

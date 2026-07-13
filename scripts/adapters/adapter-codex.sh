@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
 # adapter-codex.sh — OpenAI Codex CLI 어댑터
 #
-# 호출: codex exec --json -o <response> -s read-only -m <model> "<prompt>"
+# 호출: codex exec --json -o <response> -s <sandbox> -m <model> "<prompt>"
+#       --skip-git-repo-check </dev/null
 # 완료 감지: exit code + -o FILE last message + --json JSONL 마지막 이벤트
+#
+# 강화 (2026-07-13, Goal 2):
+# - </dev/null: stdin 명시 차단 (백그라운드 무한 대기 방지)
+# - --skip-git-repo-check: 비-git 환경 호환 (skill-codex 규칙)
+# - detached 모드에서 approval_policy=never: 자동 응답 정책
+#   (safety check는 safety-check.sh가 별도로 수행)
 
 set -Eeuo pipefail
 
@@ -86,6 +93,7 @@ call() {
     -s "$sandbox_mode"
     -C "$worktree"
     -m "$model"
+    --skip-git-repo-check    # FIX (Goal 2): 비-git 디렉터리 호환 (skill-codex 규칙)
   )
 
   # json-schema가 role별로 가능하면 추가 (옵션)
@@ -100,13 +108,21 @@ call() {
     cmd+=( -c "model_reasoning_effort=$effort" )
   fi
 
+  # FIX (Goal 2): detached 모드에서 approval_policy=never. 사용자가 즉시 응답 불가.
+  # Kant의 safety-check.sh가 별도로 protected paths/forbidden patterns 검사하므로
+  # Codex 자체의 approval은 sandbox 경계 안에서 자동 처리.
+  if [ "${KANT_DETACHED:-0}" = "1" ]; then
+    cmd+=( -c "approval_policy=never" )
+  fi
+
   # prompt 추가
   cmd+=( "$prompt" )
 
   # 실행 — set -e 안전 패턴 (command substitution 실패 시에도 rc 검출)
+  # FIX (Goal 2): </dev/null 명시. Codex가 stdin 대기하면서 hang하는 것 방지 (skill-codex 규칙)
   local rc=0
   local runner_output
-  if runner_output="$("$SKILL_LIB/timeout-runner.sh" run "$timeout" "$log_file" "$response_file" "$worktree" "${cmd[@]}")"; then
+  if runner_output="$("$SKILL_LIB/timeout-runner.sh" run "$timeout" "$log_file" "$response_file" "$worktree" "${cmd[@]}" </dev/null)"; then
     rc=0
   else
     rc=$?
