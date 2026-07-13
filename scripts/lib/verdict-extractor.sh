@@ -26,53 +26,82 @@ extract_json_object() {
     return 1
   fi
 
+  # 0단계: claude(.result) / grok(.text) envelope 언랩 후
   # 1단계: ```json ... ``` 코드블록 우선 추출
+  # 2단계: brace-counting
+  # (envelope 언랩은 최상위에 verdict가 없을 때만 — codex 등 무회귀)
   local codeblock_json
   if command -v python3 >/dev/null 2>&1; then
-    codeblock_json=$(python3 -c "
+    codeblock_json=$(
+      python3 - "$input" 2>/dev/null <<'PYEOF' || true
 import json, re, sys
-text = open('$input', 'r', errors='ignore').read()
-# Try codeblock first
-m = re.search(r'\`\`\`(?:json)?\s*\n([\s\S]*?)\n\`\`\`', text)
-if m:
-    try:
-        json.loads(m.group(1))
-        print(m.group(1).strip())
-        sys.exit(0)
-    except Exception:
-        pass
-# Brace counting
-depth = 0
-in_str = False
-escape = False
-start = -1
-for i, ch in enumerate(text):
-    if in_str:
-        if escape:
-            escape = False
-        elif ch == '\\\\':
-            escape = True
-        elif ch == '\"':
-            in_str = False
-        continue
-    if ch == '\"':
-        in_str = True
-    elif ch == '{':
-        if depth == 0:
-            start = i
-        depth += 1
-    elif ch == '}':
-        depth -= 1
-        if depth == 0 and start >= 0:
-            candidate = text[start:i+1]
-            try:
-                json.loads(candidate)
-                print(candidate.strip())
-                sys.exit(0)
-            except Exception:
-                start = -1
+
+def try_extract(text):
+    # 1단계: 코드펜스
+    m = re.search(r'```(?:json)?\s*\n([\s\S]*?)\n```', text)
+    if m:
+        try:
+            json.loads(m.group(1))
+            return m.group(1).strip()
+        except Exception:
+            pass
+    # 2단계: brace-counting
+    depth = 0
+    in_str = False
+    escape = False
+    start = -1
+    for i, ch in enumerate(text):
+        if in_str:
+            if escape:
+                escape = False
+            elif ch == '\\':
+                escape = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == '{':
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+            if depth == 0 and start >= 0:
+                candidate = text[start:i+1]
+                try:
+                    json.loads(candidate)
+                    return candidate.strip()
+                except Exception:
+                    start = -1
+    return None
+
+path = sys.argv[1]
+text = open(path, 'r', errors='ignore').read()
+
+# 0단계 (신규): envelope 언랩 — claude(.result)/grok(.text)
+# 최상위가 이미 verdict를 담고 있으면 손대지 않는다.
+try:
+    envelope = json.loads(text)
+    if isinstance(envelope, dict) and 'verdict' not in envelope:
+        for field in ('result', 'text'):
+            inner = envelope.get(field)
+            if isinstance(inner, str) and inner.strip():
+                found = try_extract(inner)
+                if found:
+                    print(found)
+                    sys.exit(0)
+except Exception:
+    pass
+
+# 기존 1~2단계 (raw 텍스트 그대로)
+found = try_extract(text)
+if found:
+    print(found)
+    sys.exit(0)
 sys.exit(1)
-" 2>/dev/null || true)
+PYEOF
+    )
   fi
 
   if [ -n "${codeblock_json:-}" ]; then
