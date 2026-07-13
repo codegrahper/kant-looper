@@ -808,8 +808,28 @@ KANT_DETACHED=1 kant-loop.sh run TASK.md --quick --agent codex --detach
 
 ### 18.5 향후 단계 (Goal 3, 4)
 
-- **Goal 3**: Python `codex-app-server-client.py` 추가 — JSON-RPC over stdio. thread resume + 실시간 이벤트 + 서버 initiated approval 자동 처리. process scope = per_run.
-- **Goal 4**: 안정성 검증(20회+ 테스트, process crash recovery, worktree 밖 파일 차단) 후 `codex exec` → `app-server` 기본값 전환. `app-server` 장애 시 `codex exec`로 fallback.
+- **Goal 3**: Python `codex-app-server-client.py` 추가 — JSON-RPC over stdio. thread resume + 실시간 이벤트 + 서버 initiated approval 자동 처리. process scope = per_run. ✅ **완료** (v1, python 표준 라이브러리만)
+- **Goal 4**: 안정성 검증(20회+ 테스트, process crash recovery, worktree 밖 파일 차단) 후 `codex exec` → `app-server` 기본값 전환. `app-server` 장애 시 `codex exec`로 자동 fallback. ✅ **구조 완료** (20회+ 실전 테스트는 별도 진행)
+
+### 18.7 런타임 기본값 (Goal 4)
+
+```bash
+# 기본 (KANT_CODEX_RUNTIME unset 또는 빈 값): app-server
+# 강제 exec (호환성): KANT_CODEX_RUNTIME=exec
+# 강제 app-server: KANT_CODEX_RUNTIME=app-server
+# 자동 fallback 끄기: KANT_CODEX_FALLBACK_TO_EXEC=0
+```
+
+### 18.8 런타임 fallback 체인
+
+```text
+KANT_CODEX_RUNTIME=app-server (기본)
+  → app-server 시도
+    → 성공: 응답 반환
+    → 실패 (Python 클라이언트 에러, codex app-server 미지원)
+      → KANT_CODEX_FALLBACK_TO_EXEC=1 (기본): exec로 자동 재시도
+      → KANT_CODEX_FALLBACK_TO_EXEC=0: 즉시 실패 보고
+```
 
 ### 18.6 제외 사항
 

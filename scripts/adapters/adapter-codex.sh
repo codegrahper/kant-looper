@@ -119,10 +119,12 @@ call() {
   cmd+=( "$prompt" )
 
   # 실행 — set -e 안전 패턴 (command substitution 실패 시에도 rc 검출)
+  # FIX (Goal 4): KANT_CODEX_RUNTIME 기본값을 app-server로 변경.
+  # 기존에는 exec였지만, app-server가 v1 안정화되었으므로 기본값 전환.
+  # app-server 실패 시 codex-runtime.sh가 자동으로 exec로 fallback (KANT_CODEX_FALLBACK_TO_EXEC=1 기본).
   # FIX (Goal 3): KANT_CODEX_RUNTIME 환경변수로 exec 또는 app-server 선택.
-  # 기본값은 exec (기존 동작). app-server는 JSON-RPC over stdio + thread resume + 실시간 이벤트.
   # FIX (Goal 2): </dev/null 명시는 codex-runtime.sh 내부에서 처리.
-  local runtime="${KANT_CODEX_RUNTIME:-exec}"
+  local runtime="${KANT_CODEX_RUNTIME:-app-server}"
   local rc=0
   local runner_output
   if runner_output="$("$SKILL_LIB/codex-runtime.sh" "$runtime" "$timeout" "$log_file" "$response_file" "$worktree" "$model" "$prompt_file" "$sandbox_mode")"; then

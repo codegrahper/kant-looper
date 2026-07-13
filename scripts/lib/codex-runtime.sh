@@ -129,7 +129,18 @@ case "${1:-}" in
     app-server)
         shift
         runtime_app_server "$@"
-        exit $?
+        local rc=$?
+        # FIX (Goal 4): app-server 실패 시 자동으로 exec로 fallback.
+        # 이유: app-server는 v1.0.0 신규. 일부 환경에서는 미지원일 수 있음.
+        # 안전 약속: exec는 단순 호출이므로 안전.
+        if [ $rc -ne 0 ] && [ "${KANT_CODEX_FALLBACK_TO_EXEC:-1}" = "1" ]; then
+            echo "[codex-runtime] app-server 실패 (rc=$rc), exec로 fallback" >&2
+            shift 5  # timeout log response cwd model (sandbox는 유지)
+            shift 1  # prompt_file
+            runtime_exec "$@"
+            exit $?
+        fi
+        exit $rc
         ;;
     *)
         echo "codex-runtime.sh — Codex 런타임 dispatcher"
