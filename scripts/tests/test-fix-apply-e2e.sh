@@ -53,6 +53,8 @@ setup_e2e_env() {
     # fix-apply + apply-change.py 복사
     cp "$SKILL_LIB/fix-apply.sh" scripts/lib/
     cp "$SKILL_LIB/apply-change.py" scripts/lib/
+    # run-scenarios.sh가 scripts/kant-loop.sh를 호출하므로 복사
+    cp "$SCRIPT_DIR/../kant-loop.sh" scripts/kant-loop.sh
     # allowlist 회귀 테스트를 위해 scripts/lib/의 다른 .sh + scripts/tests/도 복사
     # (SKILL 자체를 copy하지 않고 allowlist가 요구하는 파일만 복사)
     shopt -s nullglob
@@ -305,6 +307,9 @@ cat > "$ENV/proposal/proposal.json" <<EOF
   ]
 }
 EOF
+
+# proposal.json commit (guard_worktree_clean 통과용)
+(cd "$ENV" && git add proposal/proposal.json && git commit -q -m "e2e: proposal for S8")
 
 (
   cd "$ENV"

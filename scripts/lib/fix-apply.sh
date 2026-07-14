@@ -174,6 +174,19 @@ apply_fix() {
   # 가드 2: 재진입 방지
   guard_no_reentry "$json_file" || return 1
 
+  # 경고: commands_to_run 필드 무시 (보안)
+  local has_commands
+  if command -v jq >/dev/null 2>&1; then
+    has_commands="$(jq -r '.commands_to_run // null' "$json_file" 2>/dev/null || echo "null")"
+  elif command -v python3 >/dev/null 2>&1; then
+    has_commands="$(python3 -c "import json, sys; d=json.load(open(sys.argv[1])); print(d.get('commands_to_run', 'null'))" "$json_file" 2>/dev/null || echo "null")"
+  else
+    has_commands="null"
+  fi
+  if [ "$has_commands" != "null" ] && [ "$has_commands" != "" ]; then
+    echo "WARNING: commands_to_run 필드는 지원하지 않음 - 무시하고 패치만 적용" >&2
+  fi
+
   # JSON 파싱 — 외부 명령에 인라인 보간 없음
   # jq가 있으면 jq, 없으면 python3 -c로 (단, JSON 파일 경로만 인자로)
   # JSON 파서들은 함수 외부에서 정의되어야 apply_fix 안에서 호출 가능
@@ -191,9 +204,20 @@ keys = sys.argv[2].lstrip('.').split('.')
 v = d
 for k in keys:
     if not k: continue
-    if isinstance(v, list):
-        try: v = v[int(k)]
-        except: v = ""
+    if '[' in k and k.endswith(']'):
+        # Handle combined format like "changes[0]"
+        base = k.split('[')[0]
+        idx = k[k.index('['):].strip('[]')
+        if isinstance(v, dict):
+            v = v.get(base, "")
+        if isinstance(v, list):
+            v = v[int(idx)]
+    elif isinstance(v, list):
+        try:
+            idx = k.strip('[]')
+            v = v[int(idx)]
+        except:
+            v = ""
     elif isinstance(v, dict):
         v = v.get(k, "")
     else:
@@ -271,7 +295,7 @@ PYEOF
 
     # 적용된 파일 경로 기록 (rollback 범위 한정용)
     local changed_file
-    changed_file="$(jq -r ".changes[$i].file // \"\"" "$json_file" 2>/dev/null || echo "")"
+    changed_file="$(_json_get "$json_file" ".changes[$i].file")"
     if [ -n "$changed_file" ] && [ "$changed_file" != "null" ] && \
        guard_path_in_repo "$changed_file" "$SKILL_ROOT"; then
       applied+=("$changed_file")
@@ -307,6 +331,7 @@ PYEOF
   # ─────────────────────────────────────────
   # 커밋 — 변경한 파일만 stage
   # ─────────────────────────────────────────
+  local committed=0
   if [ "${#applied[@]}" -gt 0 ]; then
     # 변경 파일만 명시적으로 add
     git add -- "${applied[@]}" || {
@@ -332,10 +357,17 @@ PYEOF
       git checkout "$current_branch" >/dev/null 2>&1 || true
       return 1
     }
+    committed=1
+  else
+    echo "FATAL: 적용된 파일이 없음 (guard_path_in_repo가 모든 파일을 거부) — marker 미작성, rollback" >&2
+    git checkout "$current_branch" >/dev/null 2>&1 || true
+    return 1
   fi
 
-  # idempotency marker 기록
-  mark_applied "$json_file"
+  # idempotency marker 기록 — commit 성공한 경우만
+  if [ "$committed" = "1" ]; then
+    mark_applied "$json_file"
+  fi
 
   # 원래 브랜치로 복귀 (다음 호출이 깨끗한 base에서 시작하도록)
   git checkout "$current_branch" >/dev/null 2>&1 || true
