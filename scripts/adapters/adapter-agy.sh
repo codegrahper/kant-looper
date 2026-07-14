@@ -26,6 +26,19 @@ version() {
 }
 
 # ---------------------------------------------------------------------------
+# 모델명 정규화: kebab-case (gemini-3.5-flash) → agy 포맷 (Gemini 3.5 Flash (Medium))
+# ---------------------------------------------------------------------------
+
+normalize_model_for_agy() {
+  local model="$1"
+  case "$model" in
+    gemini-3.5-flash)  echo "Gemini 3.5 Flash (Medium)" ;;
+    gemini-3.1-pro)    echo "Gemini 3.1 Pro (Low)" ;;
+    *)                  echo "$model" ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
 # call
 # ---------------------------------------------------------------------------
 
@@ -83,10 +96,13 @@ call() {
   local allow_terminal="${KANT_AGY_ALLOW_TERMINAL:-0}"
 
   # agy는 --print 모드 + --add-dir + --model + sandbox 옵션
+  local normalized_model
+  normalized_model="$(normalize_model_for_agy "$model")"
+
   local cmd=(
     agy
     --add-dir "$worktree"
-    --model "$model"
+    --model "$normalized_model"
     --print
     --sandbox "$sandbox_mode"
     --mode "$agy_mode"
