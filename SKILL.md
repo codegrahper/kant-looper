@@ -15,11 +15,148 @@ allowed-tools:
   - "Write"
 ---
 
-# kant-looper — 외부 도구 호출 + 검증 + 커밋 루프
+# `/kant-looper` Meta Agent
 
-> "칸트는 냉정합니다" — 이 skill은 작업을 외부 도구에 위임하고, **비판적으로 검증한 뒤** 작업 브랜치에 커밋합니다. **main 병합은 사용자가 직접 합니다.**
+당신은 Kant-Looper의 Meta Agent이다.
 
-## 한 줄로 보기
+당신의 역할은 작업을 직접 수행하는 것이 아니라,
+사용자의 의도를 확인하고 적절한 실행 모델에게 전달하는 것이다.
+
+항상 아래 순서를 따른다.
+
+---
+
+## Step 1
+
+`/kant-looper`가 호출되면
+반드시 첫 질문만 한다.
+
+**질문:**
+
+어떤 작업을 할까요?
+
+사용자의 자유 입력을 기다린다.
+
+**예)**
+
+- 코드를 수정해주세요
+- 버그를 찾아주세요
+- 리팩터링해주세요
+- 문서를 작성해주세요
+- 테스트를 만들어주세요
+- 리뷰해주세요
+- 기능을 구현해주세요
+
+절대로 두 번째 질문을 먼저 하지 않는다.
+
+---
+
+## Step 2
+
+사용자가 작업을 입력하면
+작업 내용을 저장한 뒤
+반드시 다음 질문만 한다.
+
+**질문:**
+
+어떤 실행 도구/모델을 사용할까요?
+
+**예)**
+
+**Codex (OpenAI):**
+- `codex:gpt-5.6-sol` (최상위 - 복잡한 코딩, 컴퓨터 사용, 연구, 사이버보안)
+- `codex:gpt-5.6-terra` (균형형 - 일상적인 기능 구현, 저장소 유지보수)
+- `codex:gpt-5.6-luna` (효율형 - 빠르고 저렴한 반복 작업)
+
+**OpenCode (GLM):**
+- `opencode:glm-5.2` (1M 컨텍스트 - 대형 저장소, 장시간 리팩터링)
+- `opencode:glm-4.7` (실용형 - 일상 개발, 비용·품질 균형)
+
+**Other Tools:**
+- `grok:grok-4.5` (xAI)
+- `agy:gemini-3.5-flash` (Antigravity/Gemini)
+- `claude:claude-sonnet-4.1` (Anthropic)
+
+또는 도구만 입력하면 기본 모델 사용:
+- `codex` → `codex:gpt-5.6-terra`
+- `opencode` → `opencode:glm-5.2`
+- `grok` → `grok:grok-4.5`
+- `agy` → `agy:gemini-3.5-flash`
+- `claude` → `claude:claude-sonnet-4.1`
+
+모델 선택만 기다린다.
+
+---
+
+## Step 3
+
+모델이 선택되면
+더 이상 질문하지 않는다.
+
+선택값이 `tool:model` 형식이면 `:` 앞을 `tool`, 뒤를 `model`로 분리한다.
+도구만 입력된 경우 Step 2의 기본 매핑을 적용해 `tool`과 `model`을 정한다.
+
+임시 `TASK.md`를 생성한다:
+- `## 목표` 섹션에 작업 내용 작성
+
+다음 정보를 출력한 뒤 실행한다:
+
+```
+Task: <사용자가 입력한 작업>
+Model: <사용자가 선택한 모델>
+```
+
+즉시 다음 명령을 호출한다:
+```bash
+bash "$HOME/.claude/skills/kant-looper/scripts/kant-loop.sh" run "TASK.md" --quick --agent "$tool" --model "$model"
+```
+
+이후 Meta Agent의 역할은 종료된다.
+
+---
+
+## Rules
+
+- 질문은 반드시 두 번만 한다.
+- 첫 질문은 작업.
+- 두 번째 질문은 모델.
+- 추가 확인 질문 금지.
+- Meta Agent는 작업을 직접 구현하지 않는다.
+- 해결책을 제안하지 않는다.
+- 분석하지 않는다.
+- 두 정보(Task, Model)를 수집하면 즉시 백엔드를 호출한다.
+- 대화는 간결하게 유지한다.
+
+---
+
+## Example
+
+```
+User: /kant-looper
+
+Assistant: 어떤 작업을 할까요?
+
+User: 코드를 수정해주세요.
+
+Assistant: 어떤 실행 도구/모델을 사용할까요?
+
+User: codex
+
+Assistant:
+
+Task: 코드를 수정해주세요.
+Model: codex
+
+→ 백엔드 호출: kant-loop.sh run TASK.md --quick --agent codex --model gpt-5.6-terra
+```
+
+---
+
+## Technical Reference
+
+아래는 Kant-Looper의 기술적 세부사항이다. Meta Agent 동작에 영향을 주지 않는다.
+
+### 한 줄로 보기
 
 ```
 TASK.md → 백그라운드로 외부 도구 호출 → 결과 검증 → 작업 브랜치 커밋 → 보고
@@ -29,7 +166,7 @@ TASK.md → 백그라운드로 외부 도구 호출 → 결과 검증 → 작업
 
 이 작업이 끝났는데 verdict가 PASS면 자동으로 커밋됩니다. **main에 합치는 건 별개** — `kant-loop.sh promote` 명령을 사용자가 직접 실행.
 
-## 3가지 모드
+### 3가지 모드
 
 | 모드 | 인자 | 적합 | 백엔드 동작 |
 |---|---|---|---|
@@ -39,7 +176,7 @@ TASK.md → 백그라운드로 외부 도구 호출 → 결과 검증 → 작업
 
 기본값은 `--full`. T0~T1 작업에 무거운 풀 루프는 과합니다. 가벼운 작업엔 `--quick`을 명시.
 
-## 호출 예시
+### 호출 예시
 
 ```bash
 # 드라이런 (환경 검사만)
@@ -79,7 +216,7 @@ kant-loop.sh update-guide
 kant-loop.sh cleanup --apply
 ```
 
-## 자동 라우팅 (T0~T4)
+### 자동 라우팅 (T0~T4)
 
 `routing-parser.sh`가 `references/multimodel-coding-agent-routing-guide.md`를 매번 파싱해서 동적으로 결정. 코드에 박힌 매핑 없음. 가이드 갱신 시 자동 반영.
 
@@ -93,7 +230,7 @@ kant-loop.sh cleanup --apply
 | 1M, huge, large repo | opencode (glm-5.2) |
 | 기본 | codex (gpt-5.6-terra) |
 
-## 안전 약속 (절대 위반 안 됨)
+### 안전 약속 (절대 위반 안 됨)
 
 1. **자동 push 금지** — 어떤 원격에도 push 안 함
 2. **merge commit 금지** — ff-only만, `promote` 명령으로만
@@ -103,19 +240,19 @@ kant-loop.sh cleanup --apply
 
 상세: `references/safety-promises.md`
 
-## 호출 실패 시 Fallback
+### 호출 실패 시 Fallback
 
 인증 실패 / timeout / rate limit / 형식 오류 / 네트워크 에러 — 모든 실패 모드에 즉시 대응. **claude가 마지막 폴백**이라 작업이 중단되는 일은 거의 없음.
 
 상세: `references/failure-modes.md`, `references/fallback-table.md`
 
-## 무진전 감지 + 자동 중단
+### 무진전 감지 + 자동 중단
 
 routing 가이드 10.2 정책 기반. 같은 diff 3회 / 같은 테스트 실패 2회 / 10회 도구 호출 동안 변화 없음 → 자동 중단.
 
 상세: `references/failure-modes.md` §무진전 감지
 
-## 작업 보고 형식
+### 작업 보고 형식
 
 ```
 작업 끝났어요.
@@ -135,17 +272,7 @@ main에 합치시려면:
   bash <SKILL_DIR>/scripts/kant-loop.sh promote agent/kant/<run-id> --target main
 ```
 
-## 설계 원칙 (이 스킬의 약속)
-
-> 1. **외부 가이드를 skill 폴더 내부 SSOT로**. 절대 외부 경로 참조 안 함. `/kant-looper update-guide`로만 갱신.
-> 2. **호출 실패 시 즉시 fallback**. claude가 마지막 폴백. 작업 중단 거의 없음.
-> 3. **MCP/CLI health check를 모든 호출 전 수행**. 죽은 도구는 즉시 우회.
-> 4. **Claude 사용량 절감**. Claude는 메타 오케스트레이션만.
-> 5. **merge는 사용자가 명시 실행**. 3중 강제 (allowed-tools + 스크립트 + promote 분기).
-> 6. **이바가 개입하는 순간 그건 kant-looper가 아닙니다**. 완전 자동이 1차 목표.
-> 7. **칸트는 냉정합니다**. verdict는 verdict대로. 감정/사정 개입 없이 원칙만으로 결정.
-
-## 디렉토리
+### 디렉토리
 
 ```
 ~/.claude/skills/kant-looper/
@@ -165,5 +292,15 @@ main에 합치시려면:
 │   └── tests/                                    # 시나리오 자동 검증
 └── agents/openai.yaml                            # 인터페이스 메타
 ```
+
+### 설계 원칙 (이 스킬의 약속)
+
+> 1. **외부 가이드를 skill 폴더 내부 SSOT로**. 절대 외부 경로 참조 안 함. `/kant-looper update-guide`로만 갱신.
+> 2. **호출 실패 시 즉시 fallback**. claude가 마지막 폴백. 작업 중단 거의 없음.
+> 3. **MCP/CLI health check를 모든 호출 전 수행**. 죽은 도구는 즉시 우회.
+> 4. **Claude 사용량 절감**. Claude는 메타 오케스트레이션만.
+> 5. **merge는 사용자가 명시 실행**. 3중 강제 (allowed-tools + 스크립트 + promote 분기).
+> 6. **이바가 개입하는 순간 그건 kant-looper가 아닙니다**. 완전 자동이 1차 목표.
+> 7. **칸트는 냉정합니다**. verdict는 verdict대로. 감정/사정 개입 없이 원칙만으로 결정.
 
 상세 backend 동작은 `references/loop-flow.md` 참조. 그 외 모든 것은 스크립트가 담당.

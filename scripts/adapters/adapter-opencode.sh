@@ -70,7 +70,12 @@ call() {
   local normalized_model="$model"
   if ! printf '%s' "$model" | grep -q '/'; then
     case "$model" in
-      glm-4.*|glm-5.*)
+      glm-4.7)
+        # glm-4.7은 zai-coding-plan 프리픽스 사용
+        normalized_model="zai-coding-plan/${model}"
+        ;;
+      glm-5.*|glm-4.*)
+        # glm-5.x와 그 외 glm-4.x는 opencode-go 프리픽스 사용
         normalized_model="${glm_provider}/${model}"
         ;;
       *)
