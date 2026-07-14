@@ -31,20 +31,24 @@ analyze() {
   context="$("$LIB_DIR/failure-context.sh" capture "$state_dir")"
 
   # 2) 분석용 prompt 작성
+  # security: 모델이 commands_to_run 등을 제안하지 못하게 함.
+  # 모델은 root cause + 변경 파일(old_string/new_string)만 반환.
   local analysis_prompt_file
   analysis_prompt_file="$(mktemp -t kant-analysis-XXXXXX)"
   cat > "$analysis_prompt_file" <<PROMPTEOF
 You are a senior Bash/shell engineer analyzing a failure in kant-looper (a multi-model AI coding orchestrator).
 
-Your job: identify the ROOT CAUSE of the failure and propose a MINIMAL FIX that resolves it.
+Your job: identify the ROOT CAUSE of the failure and propose a MINIMAL FIX.
 
 $context
 
 Constraints:
-- You may ONLY modify files under: $SKILL_DIR/scripts/, $SKILL_DIR/scripts/lib/, $SKILL_DIR/scripts/adapters/, $SKILL_DIR/scripts/tests/
-- NEVER touch main branch directly. Fix must be made in a 'fix/<name>' branch.
+- You may ONLY suggest changes to files under: $SKILL_DIR/scripts/, $SKILL_DIR/scripts/lib/, $SKILL_DIR/scripts/adapters/, $SKILL_DIR/scripts/tests/
+- The branch_name MUST start with 'fix/' (e.g. fix/<short-kebab>).
 - Keep the diff minimal. Don't refactor unrelated code.
-- After applying the fix, run regression tests (bash -n on all .sh files, then scripts/tests/*).
+- You MUST NOT propose shell commands to run — only file edits.
+  Regression testing is handled by code-internal allowlist (not your suggestion).
+- Do NOT touch main/master branch.
 
 Output ONLY this JSON structure (no explanation, no markdown fence):
 {
@@ -54,9 +58,7 @@ Output ONLY this JSON structure (no explanation, no markdown fence):
   "files_changed": ["<absolute paths>"],
   "changes": [
     {"file": "<path>", "old_string": "<exact text to replace>", "new_string": "<replacement>"}
-  ],
-  "commands_to_run": ["bash -c '<verification cmd>'"],
-  "test_added": "<absolute path or empty>"
+  ]
 }
 PROMPTEOF
 
@@ -74,15 +76,15 @@ PROMPTEOF
   fi
 
   # --output-format json 으로 메타 에이전트 호출
+  # security: 배열에 claude를 넣지 않고, 단일 "${cmd[@]}" 로 실행 (중복 호출 방지)
   local cmd=(
-    claude
     -p "$(cat "$analysis_prompt_file")"
     --model "$claude_model"
     --permission-mode "$claude_perm_mode"
     --output-format json
   )
 
-  if ! claude "${cmd[@]}" > "$response_file" 2>/dev/null; then
+  if ! "${cmd[@]}" > "$response_file" 2>/dev/null; then
     echo "ERROR: meta agent call failed" >&2
     rm -f "$analysis_prompt_file" "$response_file"
     return 1
