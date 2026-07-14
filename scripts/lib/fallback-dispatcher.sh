@@ -141,7 +141,7 @@ do_fallback() {
         fb_verdict="${fb_output%%|*}"
         if [ "$fb_verdict" = "PASS" ]; then
           echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] fallback SUCCESS: $next_tool:$next_model" >> "$FALLBACK_LOG"
-          echo "${next_tool}:${next_model}"
+          echo "$fb_output"
           return 0
         else
           echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] fallback NOT_PASS: $next_tool:$next_model verdict=$fb_verdict (다음 fallback 시도)" >> "$FALLBACK_LOG"
