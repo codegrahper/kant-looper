@@ -104,7 +104,49 @@ fail_run() {
   fi
 
   notify_macos "kant-looper: failed" "$code - $message"
+
+  if [ "${KANT_META_AGENT_AUTO:-0}" = "1" ] && [ -n "$state_dir" ] && [ -d "$state_dir" ]; then
+    meta_agent_hook "$state_dir" "$code"
+  fi
+
   return 1
+}
+
+# ---------------------------------------------------------------------------
+# meta_agent_hook — fail 후 메타 에이전트를 동기 호출 (안전 모드)
+# ---------------------------------------------------------------------------
+# KANT_META_AGENT_AUTO=1 일 때 자동으로 호출
+# main 브랜치 보호, fix/ 브랜치 격리, 회귀 테스트 통과 시에만 commit
+# 절대 현재 run 상태를 손대지 않음 — 메타 에이전트는 별도 fix/ 브랜치에서 작업
+
+meta_agent_hook() {
+  local state_dir="$1" code="$2"
+  log "[meta-agent] 자동 자가 치유 시작: $code"
+
+  local proposal="$state_dir/meta-fix-proposal.json"
+  log "[meta-agent] 컨텍스트 캡처 + 분석"
+  if ! "$LIB_DIR/failure-analyzer.sh" analyze "$state_dir" > "$proposal" 2>>"$state_dir/phase-events.log"; then
+    log "[meta-agent] 분석 실패 — 사용자 개입 필요"
+    return 1
+  fi
+
+  if [ ! -s "$proposal" ]; then
+    log "[meta-agent] 제안 없음"
+    return 0
+  fi
+
+  log "[meta-agent] 제안 받음: $(head -c 100 "$proposal")..."
+  log "[meta-agent] fix/ 브랜치 패치 + 회귀 테스트"
+  if "$LIB_DIR/fix-apply.sh" apply "$proposal" 2>>"$state_dir/phase-events.log"; then
+    local fix_branch
+    fix_branch=$(python3 -c "import json,sys; print(json.load(open('$proposal'))['branch_name'])" 2>/dev/null || echo "unknown")
+    log "[meta-agent] 패치 성공: branch=$fix_branch"
+    log_event "$state_dir" "META_AGENT_FIX branch=$fix_branch"
+    notify_macos "kant-looper: meta-fix applied" "branch=$fix_branch — 검토 후 main 병합 결정"
+  else
+    log "[meta-agent] 패치 실패 — 회귀 테스트가 통과하지 못함"
+    log_event "$state_dir" "META_AGENT_FIX_FAILED"
+  fi
 }
 
 # ---------------------------------------------------------------------------
