@@ -28,6 +28,7 @@ TESTS=(
   "bash scripts/tests/test-fix-apply-e2e.sh"
   "bash scripts/tests/test-ssot-shadow.sh"
   "bash scripts/tests/test-routing-source-ssot.sh"
+  "bash scripts/tests/test-routing-ssot-sync.sh"
 )
 
 LABELS=(
@@ -46,6 +47,7 @@ LABELS=(
   "fix-apply e2e (git 통합)"
   "ssot-shadow (Phase 3 비침해 관찰)"
   "routing-source-ssot (Phase 4 토글)"
+  "routing-ssot-sync (Phase 5 hardcode↔SSOT drift 감지)"
 )
 
 # e2e 테스트는 격리 환경 의존성 (full SKILL) — 경고만 표시
