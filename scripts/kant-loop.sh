@@ -995,7 +995,6 @@ cmd_run() {
   fi
 
   if [ "$dry_run" = "1" ]; then
-    # judge_task_routing() 결과 파싱
     local judge_output
     judge_output="$("$LIB_DIR/routing-parser.sh" judge "$task_md")" || true
     local intent complexity judged_route effective_route fallback_reason reason
@@ -1005,6 +1004,16 @@ cmd_run() {
     effective_route="$(printf '%s' "$judge_output" | grep '^effective_route=' | cut -d= -f2)"
     fallback_reason="$(printf '%s' "$judge_output" | grep '^fallback_reason=' | cut -d= -f2)"
     reason="$(printf '%s' "$judge_output" | grep '^reason=' | cut -d= -f2)"
+    if [ -n "$agent_chain" ]; then
+      case "$mode" in
+        full)
+          effective_route="chain:$agent_chain"
+          ;;
+        parallel)
+          effective_route="chain:$agent_chain"
+          ;;
+      esac
+    fi
     local slug
     slug="$(task_to_slug "$task_md")"
     local rh
@@ -1016,6 +1025,7 @@ cmd_run() {
     echo "  task: $task_md"
     echo "  intent: ${intent:-unknown}"
     echo "  complexity: ${complexity:-unknown}"
+    echo "  agent_chain: ${agent_chain:-}"
     echo "  judged_route: ${judged_route:-unknown}"
     echo "  effective_route: ${effective_route:-unresolved-until-health-check}"
     echo "  fallback_reason: ${fallback_reason:-}"
@@ -1072,7 +1082,7 @@ cmd_run() {
 
   if [ "$detach" = "1" ]; then
     log "detach mode — running in background"
-    nohup "$SCRIPT_DIR/kant-loop.sh" _run_mode "$mode" "$task_md" "$state_dir" "$worktree" "$tool" "$model" > "$state_dir/detached.log" 2>&1 &
+    nohup "$SCRIPT_DIR/kant-loop.sh" _run_mode "$mode" "$task_md" "$state_dir" "$worktree" "$tool" "$model" "$agent_chain" > "$state_dir/detached.log" 2>&1 &
     local detached_pid=$!
     echo "$detached_pid" > "$state_dir/detached.pid"
     echo "run_id: $run_id"
@@ -1149,16 +1159,16 @@ create_worktree() {
 }
 
 _run_mode() {
-  local mode="$1" task_md="$2" state_dir="$3" worktree="$4" tool="$5" model="$6"
+  local mode="$1" task_md="$2" state_dir="$3" worktree="$4" tool="$5" model="$6" agent_chain="$7"
   case "$mode" in
     quick)
       run_quick_mode "$task_md" "$tool" "$model" "$state_dir" "$worktree"
       ;;
     parallel)
-      run_parallel_mode "$task_md" "$state_dir" "$worktree"
+      run_parallel_mode "$task_md" "$state_dir" "$worktree" "$agent_chain"
       ;;
     full)
-      run_full_mode "$task_md" "$state_dir" "$worktree"
+      run_full_mode "$task_md" "$state_dir" "$worktree" "$agent_chain"
       ;;
   esac
 }
