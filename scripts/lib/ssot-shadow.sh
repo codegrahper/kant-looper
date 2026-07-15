@@ -102,3 +102,70 @@ function ssot_resolve_route() {
 
     return 1
 }
+
+_routing_source_is_ssot() {
+    [[ "${KANT_ROUTING_SOURCE:-hardcode}" == "ssot" ]]
+}
+
+ssot_resolve_route_primary() {
+    _routing_source_is_ssot || return 1
+    ssot_shadow_check_env || return 1
+
+    local route_name="${1:-}"
+    local ssot_output
+    ssot_output=$(
+        python3 "${SSOT_LOADER}" route-for-task \
+            --intent="" \
+            --complexity="${route_name}" 2>/dev/null || true
+    )
+
+    [[ -z "${ssot_output}" ]] && return 1
+
+    local primary
+    primary=$(echo "${ssot_output}" | python3 -c "
+import sys, json
+p = json.load(sys.stdin).get('primary', '')
+if '|' in p and '/' in p:
+    tool, rest = p.split('|', 1)
+    model = rest.split('/', 1)[1] if '/' in rest else rest
+    if tool == 'claude' and model == 'claude-default':
+        model = 'default'
+    print(f'{tool}:{model}')
+" 2>/dev/null || echo "")
+
+    [[ -z "${primary}" ]] && return 1
+    echo "${primary}"
+}
+
+ssot_resolve_chain_by_tool_model() {
+    _routing_source_is_ssot || return 1
+    ssot_shadow_check_env || return 1
+
+    local tool="${1:-}" model="${2:-}"
+    local chain_out
+    chain_out=$(
+        python3 "${SSOT_LOADER}" chain-for-primary \
+            --tool="${tool}" --model="${model}" 2>/dev/null || true
+    )
+
+    [[ -z "${chain_out}" ]] && return 1
+
+    local chain_str
+    chain_str=$(echo "${chain_out}" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+fallbacks = d.get('fallbacks', [])
+parts = []
+for ref in fallbacks:
+    if '|' in ref and '/' in ref:
+        t, rest = ref.split('|', 1)
+        m = rest.split('/', 1)[1] if '/' in rest else rest
+        if t == 'claude' and m == 'claude-default':
+            m = 'default'
+        parts.append(f'{t}:{m}')
+print(','.join(parts))
+" 2>/dev/null || echo "")
+
+    [[ -z "${chain_str}" ]] && return 1
+    echo "${chain_str}"
+}

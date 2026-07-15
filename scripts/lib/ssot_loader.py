@@ -121,6 +121,44 @@ def chain_for_route(args: argparse.Namespace) -> None:
     print(json.dumps(result, ensure_ascii=False))
 
 
+def chain_for_primary(args: argparse.Namespace) -> None:
+    ssot = load_ssot()
+    if "error" in ssot:
+        print(json.dumps({"error": ssot["error"]}))
+        sys.exit(1)
+
+    target_tool = args.tool
+    target_model = args.model
+    routes = ssot.get("routes", {})
+
+    matched_route = None
+    matched_fallbacks = []
+    for name, route in routes.items():
+        if route.get("status") == "retired":
+            continue
+        primary = route.get("primary", "")
+        if "|" not in primary or "/" not in primary:
+            continue
+        tool, rest = primary.split("|", 1)
+        model = rest.split("/", 1)[1] if "/" in rest else rest
+        if tool == target_tool and model == target_model:
+            matched_route = name
+            matched_fallbacks = route.get("fallbacks", [])
+            break
+
+    if matched_route is None:
+        print(json.dumps({"error": f"No SSOT route whose primary matches {target_tool}:{target_model}"}))
+        sys.exit(1)
+
+    result = {
+        "route": matched_route,
+        "fallbacks": matched_fallbacks,
+        "chain_length": len(matched_fallbacks),
+    }
+
+    print(json.dumps(result, ensure_ascii=False))
+
+
 def health(args: argparse.Namespace) -> None:
     result = {
         "json_path": str(JSON_PATH),
@@ -159,15 +197,18 @@ def main():
 
     # route-for-task
     route_parser = subparsers.add_parser("route-for-task", help="Get route for task")
-    route_parser.add_argument("--intent", required=True, help="Task intent")
+    route_parser.add_argument("--intent", default="", help="Task intent (optional)")
     route_parser.add_argument("--complexity", required=True, help="Code complexity (route name)")
 
     # chain-for-route
     chain_parser = subparsers.add_parser("chain-for-route", help="Get fallback chain for route")
     chain_parser.add_argument("--route", required=True, help="Code route name")
 
-    # health
-    health_parser = subparsers.add_parser("health", help="Check SSOT health")
+    primary_parser = subparsers.add_parser("chain-for-primary", help="Get fallbacks for primary tool:model")
+    primary_parser.add_argument("--tool", required=True, help="Primary tool")
+    primary_parser.add_argument("--model", required=True, help="Primary model")
+
+    subparsers.add_parser("health", help="Check SSOT health")
 
     args = parser.parse_args()
 
@@ -175,6 +216,8 @@ def main():
         route_for_task(args)
     elif args.command == "chain-for-route":
         chain_for_route(args)
+    elif args.command == "chain-for-primary":
+        chain_for_primary(args)
     elif args.command == "health":
         health(args)
     else:

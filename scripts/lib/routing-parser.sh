@@ -127,6 +127,16 @@ _get_route_candidate() {
   local route="$1" tier="$2"
   parse_routing_guide
 
+  if [ "${KANT_ROUTING_SOURCE:-hardcode}" = "ssot" ] && [ -f "$LIB_DIR/ssot-shadow.sh" ]; then
+    source "$LIB_DIR/ssot-shadow.sh"
+    local ssot_primary
+    ssot_primary="$(ssot_resolve_route_primary "${route%_repo}" 2>/dev/null || true)"
+    if [ -n "$ssot_primary" ]; then
+      echo "$ssot_primary"
+      return 0
+    fi
+  fi
+
   local route_key="${route%_repo}"
   local route_uc
   route_uc="$(printf '%s' "$route_key" | tr '[:lower:]' '[:upper:]')"
