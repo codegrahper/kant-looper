@@ -320,7 +320,39 @@
       }
     },
     "selection_policy": {
-      "type": "object"
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hard_exclusions",
+        "scoring",
+        "tie_breakers"
+      ],
+      "properties": {
+        "hard_exclusions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "scoring": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "tie_breakers": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        }
+      }
     },
     "review_policy": {
       "type": "object"
