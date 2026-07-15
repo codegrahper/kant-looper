@@ -529,9 +529,14 @@ EOF
 
 run_parallel_mode() {
   local task_md="$1" state_dir="$2" worktree="$3"
+  local agent_chain="${4:-}"
 
   local route_list
-  route_list="$("$LIB_DIR/routing-parser.sh" slice "$task_md")"
+  if [ -n "$agent_chain" ]; then
+    route_list="$agent_chain"
+  else
+    route_list="$("$LIB_DIR/routing-parser.sh" slice "$task_md")"
+  fi
   log "parallel mode: $route_list"
   log_event "$state_dir" "PARALLEL_CALL chain=$route_list"
 
@@ -657,10 +662,31 @@ $summary"
 
 run_full_mode() {
   local task_md="$1" state_dir="$2" worktree="$3"
+  local agent_chain="${4:-}"
 
-  local plan_agent="opencode" plan_model="glm-5.2"
-  local impl_agent="agy" impl_model="gemini-3.5-flash"
-  local review_agent="codex" review_model="gpt-5.6-sol"
+  if [ -n "$agent_chain" ]; then
+    local plan_agent plan_model impl_agent impl_model review_agent review_model
+    local chain_copy="$agent_chain"
+    local idx=0
+    while [ -n "$chain_copy" ] && [ $idx -lt 3 ]; do
+      local segment="${chain_copy%%,*}"
+      case $idx in
+        0) plan_agent="${segment%%:*}"; plan_model="${segment#*:}" ;;
+        1) impl_agent="${segment%%:*}"; impl_model="${segment#*:}" ;;
+        2) review_agent="${segment%%:*}"; review_model="${segment#*:}" ;;
+      esac
+      if [ "$chain_copy" = "$segment" ]; then
+        chain_copy=""
+      else
+        chain_copy="${chain_copy#*,}"
+      fi
+      idx=$((idx + 1))
+    done
+  else
+    plan_agent="opencode"; plan_model="glm-5.2"
+    impl_agent="agy"; impl_model="gemini-3.5-flash"
+    review_agent="codex"; review_model="gpt-5.6-sol"
+  fi
 
   local round=1
   local verdict="CHANGES_REQUESTED"
@@ -939,6 +965,35 @@ cmd_run() {
     exit 1
   fi
 
+  # --chain 검증: quick 모드 제외 full/parallel만 사용
+  if [ -n "$agent_chain" ] && [ "$mode" = "quick" ]; then
+    echo "--chain은 --parallel 또는 --full 모드에서만 사용할 수 있습니다." >&2
+    exit 1
+  fi
+
+  # --chain 포맷 검증: tool:model,tool:model,...
+  if [ -n "$agent_chain" ]; then
+    local chain_invalid=0
+    local chain_copy="$agent_chain"
+    while [ -n "$chain_copy" ]; do
+      local segment="${chain_copy%%,*}"
+      if ! printf '%s' "$segment" | grep -Eq '^[^:]+:[^:]+$'; then
+        echo "invalid chain segment: '$segment' (expected tool:model)" >&2
+        chain_invalid=1
+        break
+      fi
+      if [ "$chain_copy" = "$segment" ]; then
+        chain_copy=""
+      else
+        chain_copy="${chain_copy#*,}"
+      fi
+    done
+    if [ "$chain_invalid" = "1" ]; then
+      exit 1
+    fi
+    log "chain specified: $agent_chain"
+  fi
+
   if [ "$dry_run" = "1" ]; then
     # judge_task_routing() 결과 파싱
     local judge_output
@@ -1035,10 +1090,10 @@ cmd_run() {
       run_quick_mode "$task_md" "$tool" "$model" "$state_dir" "$worktree"
       ;;
     parallel)
-      run_parallel_mode "$task_md" "$state_dir" "$worktree"
+      run_parallel_mode "$task_md" "$state_dir" "$worktree" "$agent_chain"
       ;;
     full)
-      run_full_mode "$task_md" "$state_dir" "$worktree"
+      run_full_mode "$task_md" "$state_dir" "$worktree" "$agent_chain"
       ;;
   esac
   local rc=$?
