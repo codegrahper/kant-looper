@@ -299,22 +299,108 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# Agent 기본 모델 매핑
+# ---------------------------------------------------------------------------
+
+get_default_model() {
+  local tool="$1"
+  case "$tool" in
+    codex)    echo "gpt-5.6-sol" ;;
+    opencode) echo "glm-5.2" ;;
+    grok)     echo "grok-4.5" ;;
+    agy)      echo "gemini-3.5-flash" ;;
+    claude)   echo "default" ;;
+    *)        echo "" ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# Agent + Model 호환성 검증 (CLI 호출 전)
+# ---------------------------------------------------------------------------
+
+validate_agent_model_compatibility() {
+  local tool="$1" model="$2"
+  if [ -z "$tool" ] || [ -z "$model" ]; then
+    return 0
+  fi
+
+  case "$tool" in
+    codex)
+      if ! echo "$model" | grep -qE '^gpt-'; then
+        echo "ERROR: codex requires gpt-* model, got '$model'" >&2
+        return 1
+      fi
+      ;;
+    opencode)
+      if ! echo "$model" | grep -qE '^glm-'; then
+        if ! echo "$model" | grep -qE '^MiniMax-'; then
+          echo "ERROR: opencode requires glm-* or MiniMax-* model, got '$model'" >&2
+          return 1
+        fi
+      fi
+      ;;
+    grok)
+      if ! echo "$model" | grep -qE '^grok-'; then
+        echo "ERROR: grok requires grok-* model, got '$model'" >&2
+        return 1
+      fi
+      ;;
+    agy)
+      if ! echo "$model" | grep -qE '^gemini-'; then
+        echo "ERROR: agy requires gemini-* model, got '$model'" >&2
+        return 1
+      fi
+      ;;
+    claude)
+      if echo "$model" | grep -qE '^MiniMax-'; then
+        echo "ERROR: claude does not support MiniMax models" >&2
+        return 1
+      fi
+      ;;
+  esac
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # 단일 호출 (--quick 모드)
 # ---------------------------------------------------------------------------
 
 run_quick_mode() {
   local task_md="$1" tool="${2:-}" model="${3:-}" state_dir="$4" worktree="$5"
 
-  if [ -z "$tool" ] || [ -z "$model" ]; then
+  # --agent만 지정되고 --model이 없을 때: agent 기본 모델 자동 선택
+  if [ -n "$tool" ] && [ -z "$model" ]; then
+    model="$(get_default_model "$tool")"
+    log "auto model for --agent $tool: $model"
+  fi
+
+  if [ -z "$tool" ] && [ -z "$model" ]; then
     if [ "$AUTO_ROUTE" = "1" ]; then
       local route
       route="$("$LIB_DIR/routing-parser.sh" match "$task_md")"
-      tool="${tool:-${route%%:*}}"
+      tool="${route%%:*}"
+      model="${route#*:}"
+    else
+      tool="codex"
+      model="gpt-5.6-terra"
+    fi
+  elif [ -z "$tool" ]; then
+    # --model만 지정된 경우
+    if [ "$AUTO_ROUTE" = "1" ]; then
+      local route
+      route="$("$LIB_DIR/routing-parser.sh" match "$task_md")"
+      tool="${route%%:*}"
       model="${model:-${route#*:}}"
     else
-      tool="${tool:-codex}"
+      tool="codex"
       model="${model:-gpt-5.6-terra}"
     fi
+  fi
+
+  # CLI 호출 전 호환성 검증
+  if ! validate_agent_model_compatibility "$tool" "$model"; then
+    fail_run "$state_dir" "INCOMPATIBLE_AGENT_MODEL" "tool=$tool model=$model"
+    return 1
   fi
 
   log "quick mode: $tool:$model"
@@ -323,6 +409,15 @@ run_quick_mode() {
   local prompt_file="$state_dir/prompt-quick.md"
   cat > "$prompt_file" <<EOF
 $(cat "$task_md")
+
+---
+
+## 작업 영역 경로 규칙
+Current working directory is your worktree root: $worktree
+Use only relative paths. Do not recreate the worktree directory.
+Examples: calculator.py, DONE.md, codex/, opencode/, grok/, agy/
+Forbidden: Desktop/, ~/Desktop/, Users/, C:\
+Agents modify only their own workspace. Do not modify other agent folders.
 
 ---
 
@@ -451,6 +546,13 @@ run_parallel_mode() {
     cat > "$prompt_file" <<EOF
 $(cat "$task_md")
 
+## 작업 영역 경로 규칙
+Current working directory is your worktree root: $worktree
+Use only relative paths. Do not recreate the worktree directory.
+Examples: calculator.py, DONE.md, codex/, opencode/, grok/, agy/
+Forbidden: Desktop/, ~/Desktop/, Users/, C:\
+Agents modify only their own workspace. Do not modify other agent folders.
+
 ## 병렬 슬라이스
 이 작업의 일부만 수행하세요. 도구: $tool / 모델: $model / 슬라이스: $((i+1))/${#pairs[@]}
 
@@ -566,6 +668,13 @@ run_full_mode() {
     cat > "$plan_prompt" <<EOF
 $(cat "$task_md")
 
+## 작업 영역 경로 규칙
+Current working directory is your worktree root: $worktree
+Use only relative paths. Do not recreate the worktree directory.
+Examples: calculator.py, DONE.md, codex/, opencode/, grok/, agy/
+Forbidden: Desktop/, ~/Desktop/, Users/, C:\
+Agents modify only their own workspace. Do not modify other agent folders.
+
 ## 보고 형식 (plan role)
 {
   "verdict": "PASS|CHANGES_REQUESTED|BLOCKED|INVALID_OUTPUT",
@@ -611,7 +720,14 @@ $(cat "$task_md")
 ## plan 결과
 $(cat "$state_dir/${plan_agent}-plan.json" 2>/dev/null || echo '{}')
 
-    ## 보고 형식 (implement role)
+## 작업 영역 경로 규칙
+Current working directory is your worktree root: $worktree
+Use only relative paths. Do not recreate the worktree directory.
+Examples: calculator.py, DONE.md, codex/, opencode/, grok/, agy/
+Forbidden: Desktop/, ~/Desktop/, Users/, C:\
+Agents modify only their own workspace. Do not modify other agent folders.
+
+## 보고 형식 (implement role)
 {
   "verdict": "PASS|CHANGES_REQUESTED|BLOCKED|INVALID_OUTPUT",
   "summary": "string",
@@ -667,6 +783,13 @@ EOF
     local review_prompt="$state_dir/review-prompt-r${round}.md"
     cat > "$review_prompt" <<EOF
 $(cat "$task_md")
+
+## 작업 영역 경로 규칙
+Current working directory is your worktree root: $worktree
+Use only relative paths. Do not recreate the worktree directory.
+Examples: calculator.py, DONE.md, codex/, opencode/, grok/, agy/
+Forbidden: Desktop/, ~/Desktop/, Users/, C:\
+Agents modify only their own workspace. Do not modify other agent folders.
 
 ## 변경 사항
 $(cd "$worktree" && git diff --cached --stat 2>/dev/null || echo "no staged diff")
