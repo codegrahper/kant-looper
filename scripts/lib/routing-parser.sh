@@ -435,6 +435,10 @@ judge_task_routing() {
         implement|research|cli) primary_intent="refactor" ;;
       esac
     fi
+    # Strong UI signal beats test when tied
+    if [ "$ui_score" -eq "$best_score" ] && [ "$primary_intent" = "test" ] && [ "$has_strong_ui_signal" = "1" ]; then
+      primary_intent="ui"
+    fi
   fi
 
   # secondary signals 수집
@@ -519,71 +523,46 @@ judge_task_routing() {
     reason_str="${reason_str};secondary:${secondary_list#,}"
   fi
 
+  # judge_task_routing 레벨에서는 health check 없음
+  # effective_route = judged_route (health check는 실행 시 수행)
+  local effective_route="$candidate"
+  local fb_reason=""
+
+  # 현재 judge 레벨에서는 health check/fallback 없음
+  # future: health check 실패 시 fallback 적용 로직 추가 가능
+
   # 기계 판독 가능한 출력
   printf 'intent=%s\n' "$primary_intent"
   printf 'complexity=%s\n' "$complexity"
   printf 'judged_route=%s\n' "$candidate"
+  printf 'effective_route=%s\n' "$effective_route"
+  printf 'fallback_reason=%s\n' "$fb_reason"
   printf 'reason=%s\n' "$reason_str"
 }
 
 # ---------------------------------------------------------------------------
-# 메타 에이전트 판단 기반 라우팅 (기존 함수 - 하위 호환성 유지)
+# 메타 에이전트 판단 기반 라우팅 (judge_task_routing으로 통합)
 # ---------------------------------------------------------------------------
 
 match_with_judgment() {
+  # --intent and --complexity arguments are now ignored (calculated internally)
+  # maintained for backward compatibility
   local task_file=""
-  local intent="" complexity=""
-
   while [ $# -gt 0 ]; do
     case "$1" in
-      --intent=*) intent="${1#--intent=}" ;;
-      --complexity=*) complexity="${1#--complexity=}" ;;
+      --intent=*|--complexity=*) ;;  # ignore, judge_task_routing calculates
       *)
         if [ -z "$task_file" ]; then task_file="$1"; fi ;;
     esac
     shift
   done
 
-  if [ -z "$intent" ] || [ -z "$complexity" ]; then
-    echo "ERROR: --intent and --complexity are required" >&2
+  if [ -z "$task_file" ]; then
+    echo "ERROR: task file required" >&2
     return 1
   fi
 
-  parse_routing_guide
-
-  local route="$(_intent_to_route "$intent")"
-
-  case "$complexity" in
-    T4) route="huge" ;;
-    T3)
-      if [ "$intent" = "implement" ] || [ "$intent" = "debug" ] || [ "$intent" = "research" ]; then
-        route="hard"
-      fi
-      ;;
-  esac
-
-  local candidate="$(_get_route_candidate "$route" "primary")"
-
-  if _validate_candidate "$candidate"; then
-    echo "$candidate"
-    return 0
-  fi
-
-  local tool="${candidate%%:*}"
-  local model="${candidate#*:}"
-  local fb_chain
-  fb_chain="$("$LIB_DIR/fallback-dispatcher.sh" chain "$tool" "$model" 2>/dev/null || true)"
-
-  if [ -n "$fb_chain" ]; then
-    local selected
-    selected="$(_select_valid_fallback "$fb_chain")"
-    if [ -n "$selected" ]; then
-      echo "$selected"
-      return 0
-    fi
-  fi
-
-  echo "claude:${KANT_CLAUDE_MODEL}"
+  judge_task_routing "$task_file"
 }
 
 classify_task_intent() {
@@ -738,7 +717,7 @@ fi
 
 if [ "${1:-}" = "match" ]; then
   shift
-  match_task_to_route "$@"
+  judge_task_routing "$@"
   exit 0
 fi
 

@@ -940,8 +940,16 @@ cmd_run() {
   fi
 
   if [ "$dry_run" = "1" ]; then
-    local route
-    route="$("$LIB_DIR/routing-parser.sh" match "$task_md")"
+    # judge_task_routing() 결과 파싱
+    local judge_output
+    judge_output="$("$LIB_DIR/routing-parser.sh" judge "$task_md")" || true
+    local intent complexity judged_route effective_route fallback_reason reason
+    intent="$(printf '%s' "$judge_output" | grep '^intent=' | cut -d= -f2)"
+    complexity="$(printf '%s' "$judge_output" | grep '^complexity=' | cut -d= -f2)"
+    judged_route="$(printf '%s' "$judge_output" | grep '^judged_route=' | cut -d= -f2)"
+    effective_route="$(printf '%s' "$judge_output" | grep '^effective_route=' | cut -d= -f2)"
+    fallback_reason="$(printf '%s' "$judge_output" | grep '^fallback_reason=' | cut -d= -f2)"
+    reason="$(printf '%s' "$judge_output" | grep '^reason=' | cut -d= -f2)"
     local slug
     slug="$(task_to_slug "$task_md")"
     local rh
@@ -951,7 +959,12 @@ cmd_run() {
     echo "dry-run:"
     echo "  mode: $mode"
     echo "  task: $task_md"
-    echo "  route: $route"
+    echo "  intent: ${intent:-unknown}"
+    echo "  complexity: ${complexity:-unknown}"
+    echo "  judged_route: ${judged_route:-unknown}"
+    echo "  effective_route: ${effective_route:-unresolved-until-health-check}"
+    echo "  fallback_reason: ${fallback_reason:-}"
+    echo "  reason: ${reason:-}"
     echo "  run_id: $run_id"
     echo "  state_dir: $STATE_ROOT/$rh/$run_id"
     echo "  branch: $BRANCH_PREFIX/$run_id"

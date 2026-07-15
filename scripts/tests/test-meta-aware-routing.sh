@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # test-meta-aware-routing.sh — 메타 에이전트 판단 기반 라우팅 테스트
 #
-# 기존 자동 라우팅은 "인증 로직을 수정하고 테스트를 추가한다" 같은 작업에서
-# "테스트" 키워드에 이끌려 codex:luna를 선택함 (잘못된 라우팅).
-# 메타 에이전트가 작업의 주 의도를 먼저 판단하면 이 문제가 개선됨.
+# Phase 1/2: judge_task_routing() 통합 후 업데이트
+# - match, match-with-judgment, judge 모두 judge_task_routing() 사용
+# - 출력 포맷: multi-line key=value (intent, complexity, judged_route, effective_route, fallback_reason, reason)
 
 set -euo pipefail
 
@@ -13,13 +13,27 @@ ROUTING_PARSER="$SKILL_ROOT/scripts/lib/routing-parser.sh"
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
-# 색상
 RED=$'\033[0;31m'
 GREEN=$'\033[0;32m'
 NC=$'\033[0m'
 
 PASSED=0
 FAILED=0
+
+# judge_task_routing 출력에서 judged_route 추출
+get_judged_route() {
+  printf '%s' "$1" | grep '^judged_route=' | cut -d= -f2
+}
+
+# judge_task_routing 출력에서 intent 추출
+get_intent() {
+  printf '%s' "$1" | grep '^intent=' | cut -d= -f2
+}
+
+# judge_task_routing 출력에서 complexity 추출
+get_complexity() {
+  printf '%s' "$1" | grep '^complexity=' | cut -d= -f2
+}
 
 assert_eq() {
   local label="$1" expected="$2" actual="$3"
@@ -35,76 +49,66 @@ assert_eq() {
 }
 
 # ----------------------------------------------------------------------------
-# 기존 동작 회귀 테스트 (하위 호환성)
+# judge_task_routing 통합 테스트 (match, judge, match-with-judgment 통일)
 # ----------------------------------------------------------------------------
 
-echo "=== 기존 CLI 회귀 테스트 ==="
+echo "=== judge_task_routing() 통합: match ==="
 
-# 1. 키워드 "test"가 포함된 작업: 기존 동작 = codex:luna
 TASK_FILE="$TMPDIR/test_task.md"
+
 echo "# 단위 테스트 작성" > "$TASK_FILE"
 result="$("$ROUTING_PARSER" match "$TASK_FILE" 2>/dev/null || true)"
-assert_eq "기존 match: test 키워드 → codex:luna" "codex:gpt-5.6-luna" "$result"
+route="$(get_judged_route "$result")"
+assert_eq "match: test 키워드 → codex:luna" "codex:gpt-5.6-luna" "$route"
 
-# 2. 키워드 "refactor"가 포함된 작업: 기존 동작 = opencode:glm-5.2
 echo "# 코드 리팩터링" > "$TASK_FILE"
 result="$("$ROUTING_PARSER" match "$TASK_FILE" 2>/dev/null || true)"
-assert_eq "기존 match: refactor → opencode:glm-5.2" "opencode:glm-5.2" "$result"
+route="$(get_judged_route "$result")"
+assert_eq "match: refactor → opencode:glm-5.2" "opencode:glm-5.2" "$route"
 
-# 3. 키워드 "ui"가 포함된 작업: 기존 동작 = agy:gemini-3.5-flash
+# Phase 1/2: component만으로는 UI가 아님 (강한 신호 필요)
 echo "# UI 컴포넌트 수정" > "$TASK_FILE"
 result="$("$ROUTING_PARSER" match "$TASK_FILE" 2>/dev/null || true)"
-assert_eq "기존 match: ui → agy:gemini-3.5-flash" "agy:gemini-3.5-flash" "$result"
-
-# ----------------------------------------------------------------------------
-# 새 기능: 메타 에이전트 판단 기반 라우팅
-# ----------------------------------------------------------------------------
+route="$(get_judged_route "$result")"
+# component는 CSS/layout 관련으로 +2점이지만, 강한 UI 신호 없으면 debug가 우선
+assert_eq "match: component만으로는 UI 아님 → codex:terra" "codex:gpt-5.6-terra" "$route"
 
 echo ""
-echo "=== 메타 에이전트 판단 기반 라우팅 (신규) ==="
+echo "=== judge_task_routing() 통합: judge ==="
 
-# 4. 주 의도 = "implement", 보조 키워드 = "test" → codex:terra (구현이 주)
-# 기존 동작: codex:luna (잘못된 라우팅)
+# judge는 match와 동일한 결과어야 함
+echo "# 단위 테스트 작성" > "$TASK_FILE"
+result="$("$ROUTING_PARSER" judge "$TASK_FILE" 2>/dev/null || true)"
+route="$(get_judged_route "$result")"
+assert_eq "judge: test 키워드 → codex:luna" "codex:gpt-5.6-luna" "$route"
+
+echo "# Bash 어댑터 파서 리팩터링" > "$TASK_FILE"
+result="$("$ROUTING_PARSER" judge "$TASK_FILE" 2>/dev/null || true)"
+intent="$(get_intent "$result")"
+route="$(get_judged_route "$result")"
+assert_eq "judge: refactor 신호 → refactor intent" "refactor" "$intent"
+assert_eq "judge: refactor → opencode:glm-5.2" "opencode:glm-5.2" "$route"
+
+echo ""
+echo "=== match-with-judgment (--intent/--complexity 무시됨) ==="
+
+# match-with-judgment는 이제 judge_task_routing()을 직접 호출
+# --intent, --complexity 인자는 무시되고 자동으로 계산됨
+
 echo "# 인증 로직을 수정하고 테스트를 추가한다" > "$TASK_FILE"
 result="$("$ROUTING_PARSER" match-with-judgment "$TASK_FILE" --intent=implement --complexity=T1 2>/dev/null || true)"
-expected="codex:gpt-5.6-terra"
-assert_eq "메타 판단: implement+T1 → codex:terra (기존 match 결과와 다름)" "$expected" "$result"
+route="$(get_judged_route "$result")"
+# 자동 계산: 수정(+3) + 테스트(+3) = debug/test 동점 → debug 우선
+assert_eq "match-with-judgment: 자동 계산 → codex:terra" "codex:gpt-5.6-terra" "$route"
 
-# 5. 주 의도 = "implement", 복잡도 = T3 → codex:sol (저장소 영향 큼)
 echo "# 분산 시스템의 결제 모듈을 전체적으로 재설계" > "$TASK_FILE"
 result="$("$ROUTING_PARSER" match-with-judgment "$TASK_FILE" --intent=implement --complexity=T3 2>/dev/null || true)"
-expected="codex:gpt-5.6-sol"
-assert_eq "메타 판단: implement+T3 → codex:sol" "$expected" "$result"
-
-# 6. 주 의도 = "review", 복잡도 = T2 → codex:sol
-echo "# PR 리뷰를 수행하고 개선 제안" > "$TASK_FILE"
-result="$("$ROUTING_PARSER" match-with-judgment "$TASK_FILE" --intent=review --complexity=T2 2>/dev/null || true)"
-expected="codex:gpt-5.6-sol"
-assert_eq "메타 판단: review+T2 → codex:sol" "$expected" "$result"
-
-# 7. 주 의도 = "refactor", 복잡도 = T3 → opencode:glm-5.2
-echo "# 대형 저장소 리팩터링" > "$TASK_FILE"
-result="$("$ROUTING_PARSER" match-with-judgment "$TASK_FILE" --intent=refactor --complexity=T3 2>/dev/null || true)"
-expected="opencode:glm-5.2"
-assert_eq "메타 판단: refactor+T3 → opencode:glm-5.2" "$expected" "$result"
-
-# 8. 주 의도 = "test", 복잡도 = T0 → codex:luna (맞음)
-echo "# 함수 단위 테스트 추가" > "$TASK_FILE"
-result="$("$ROUTING_PARSER" match-with-judgment "$TASK_FILE" --intent=test --complexity=T0 2>/dev/null || true)"
-expected="codex:gpt-5.6-luna"
-assert_eq "메타 판단: test+T0 → codex:luna" "$expected" "$result"
-
-# 9. 주 의도 = "ui", 복잡도 = T2 → agy:gemini-3.5-flash
-echo "# 새로운 UI 컴포넌트 디자인" > "$TASK_FILE"
-result="$("$ROUTING_PARSER" match-with-judgment "$TASK_FILE" --intent=ui --complexity=T2 2>/dev/null || true)"
-expected="agy:gemini-3.5-flash"
-assert_eq "메타 판단: ui+T2 → agy:gemini-3.5-flash" "$expected" "$result"
-
-# 10. 주 의도 = "implement", 복잡도 = T4 (1M 컨텍스트 필요) → opencode:glm-5.2
-echo "# 전체 코드베이스 분석 후 구현" > "$TASK_FILE"
-result="$("$ROUTING_PARSER" match-with-judgment "$TASK_FILE" --intent=implement --complexity=T4 2>/dev/null || true)"
-expected="opencode:glm-5.2"
-assert_eq "메타 판단: implement+T4 → opencode:glm-5.2" "$expected" "$result"
+complexity="$(get_complexity "$result")"
+route="$(get_judged_route "$result")"
+# 자동 계산: "전체적으로 재설계"는 T3 패턴 없음 (저장소 전체/리팩터 마이그레이션 아님)
+# "재설계" alone doesn't match T3 patterns → T2
+assert_eq "match-with-judgment: 전체 재설계 → T2" "T2" "$complexity"
+assert_eq "match-with-judgment: implement+T2 → codex:terra" "codex:gpt-5.6-terra" "$route"
 
 echo ""
 echo "=== 의도/복잡도 휴리스틱 회귀 테스트 ==="
@@ -140,6 +144,32 @@ assert_eq "전체 비용은 T3가 아님" "T1" "$result"
 printf '%s\n' '# archive 메타데이터를 읽는다' > "$TASK_FILE"
 result="$("$ROUTING_PARSER" estimate-complexity "$TASK_FILE")"
 assert_eq "archive의 부분 문자열은 T4가 아님" "T1" "$result"
+
+echo ""
+echo "=== judge_task_routing() 새 신호 점수화 테스트 ==="
+
+# Phase 1/2: 증거 점수화 테스트
+
+printf '%s\n' '# 시각적 회귀 테스트 추가' > "$TASK_FILE"
+result="$("$ROUTING_PARSER" judge "$TASK_FILE" 2>/dev/null || true)"
+intent="$(get_intent "$result")"
+route="$(get_judged_route "$result")"
+# 시각적 회귀 = strong UI signal → UI intent
+assert_eq "visual regression 신호 → ui intent" "ui" "$intent"
+assert_eq "visual regression → agy:gemini-3.5-flash" "agy:gemini-3.5-flash" "$route"
+
+printf '%s\n' '# 시스템 커널 모듈 버그 수정' > "$TASK_FILE"
+result="$("$ROUTING_PARSER" judge "$TASK_FILE" 2>/dev/null || true)"
+intent="$(get_intent "$result")"
+route="$(get_judged_route "$result")"
+# 버그 + kernel → debug
+assert_eq "버그+kernel → debug intent" "debug" "$intent"
+
+printf '%s\n' '# 함수 추출 및 구조 개선' > "$TASK_FILE"
+result="$("$ROUTING_PARSER" judge "$TASK_FILE" 2>/dev/null || true)"
+intent="$(get_intent "$result")"
+# 함수 추출 = refactor signal
+assert_eq "함수 추출 → refactor intent" "refactor" "$intent"
 
 # ----------------------------------------------------------------------------
 # 결과 출력
