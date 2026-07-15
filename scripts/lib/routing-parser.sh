@@ -445,6 +445,8 @@ judge_task_routing() {
     fi
   fi
 
+  # bash/cli context: cli_score captures both; preserve explicit intent over context override
+
   # secondary signals 수집
   local all_signals=""
   [ -n "$debug_signals" ] && all_signals="${all_signals}${debug_signals}"
