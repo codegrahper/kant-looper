@@ -154,6 +154,12 @@ task_to_slug() {
 do_safety_check() {
   local worktree="$1"
 
+  # 파이썬 런타임 캐시 정리 (git add -A 전에 수행)
+  # $worktree 내부로 한정 — 경로 탈출 방지
+  # *.pyc, *.pyo는 find -delete로 직접 삭제, __pycache__는 -exec rm -rf로 재귀 삭제
+  find "$worktree" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
+  find "$worktree" -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete 2>/dev/null || true
+
   # 검사/커밋 전 반드시 스테이징한다. 이게 빠지면 두 가지가 조용히 깨진다:
   #   1) check_forbidden_patterns()가 git diff(--cached 포함)만 보므로,
   #      한 번도 add되지 않은 신규(untracked) 파일 안의 시크릿/키 패턴을 전혀 스캔하지 못한다.

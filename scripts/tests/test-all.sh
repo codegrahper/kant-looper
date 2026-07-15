@@ -24,6 +24,7 @@ TESTS=(
   "bash scripts/tests/test-worktree-relative-path.sh"
   "bash scripts/tests/test-timeout-runner-cwd.sh"
   "bash scripts/tests/test-redactor.sh"
+  "bash scripts/tests/test-python-cache-cleanup.sh"
   "bash scripts/tests/test-fix-apply-e2e.sh"
 )
 
@@ -39,6 +40,7 @@ LABELS=(
   "worktree-relative-path (Bug #2 fix)"
   "timeout-runner cwd"
   "PR B: redactor (secret 마스킹)"
+  "python-cache-cleanup (커밋 전 pycache 정리)"
   "fix-apply e2e (git 통합)"
 )
 
