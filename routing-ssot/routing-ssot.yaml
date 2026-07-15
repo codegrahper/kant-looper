@@ -1,0 +1,653 @@
+schema_version: 1.1.0
+document:
+  id: kant-looper-routing-ssot
+  title: Kant Looper Multimodel Routing SSOT
+  status: active
+  effective_date: '2026-07-16'
+  last_verified_at: '2026-07-16'
+  owner: Kant Looper maintainers
+  approval_required: true
+  source_of_truth: true
+  generated_docs:
+  - references/multimodel-coding-agent-routing-guide.md
+  - references/multimodel-coding-agent-routing-guide-simplified.md
+governance:
+  principles:
+  - provider_independence
+  - human_final_control
+  - least_privilege
+  - evidence_before_success
+  - cross_provider_review
+  - reproducible_routing
+  normative_language: RFC2119
+  change_control:
+    direct_edit_to_generated_docs: forbidden
+    ssot_change_requires:
+    - schema_validation
+    - semantic_validation
+    - source_verification
+    - regression_evaluation
+    - human_approval
+    emergency_disable_without_benchmark: true
+    emergency_enable_without_benchmark: false
+# agent_bindings encodes the 5 compatibility rules enforced at runtime by
+# kant-loop.sh::validate_agent_model_compatibility() (lines 327-368).
+# - allowed_model_patterns: model_id must match at least one (grep -E semantics)
+# - denied_model_patterns: model_id must NOT match any
+# Each model's agent_tool MUST be drawn from these keys.
+agent_bindings:
+  codex:
+    display_name: Codex CLI
+    allowed_model_patterns:
+    - '^gpt-'
+  opencode:
+    display_name: OpenCode
+    allowed_model_patterns:
+    - '^glm-'
+    - '^MiniMax-'
+  grok:
+    display_name: Grok CLI
+    allowed_model_patterns:
+    - '^grok-'
+  agy:
+    display_name: Antigravity (agy)
+    allowed_model_patterns:
+    - '^gemini-'
+  claude:
+    display_name: Claude CLI
+    # claude rejects only MiniMax-*; everything else is accepted.
+    # claude-default (the CLI's own default) is the universal safety net.
+    denied_model_patterns:
+    - '^MiniMax-'
+providers:
+  openai:
+    display_name: OpenAI
+    official_sources:
+    - https://platform.openai.com/docs/models
+    - https://openai.com/index/gpt-5-6/
+  zai:
+    display_name: Z.AI
+    official_sources:
+    - https://docs.z.ai/
+    - https://docs.z.ai/release-notes/new-released
+  xai:
+    display_name: xAI
+    official_sources:
+    - https://docs.x.ai/docs/models
+    - https://x.ai/news
+  google:
+    display_name: Google
+    official_sources:
+    - https://ai.google.dev/gemini-api/docs/models
+    - https://ai.google.dev/gemini-api/docs/changelog
+    - https://ai.google.dev/gemini-api/docs/deprecations
+  minimax:
+    display_name: MiniMax
+    official_sources:
+    - https://platform.minimax.io/docs/guides/models-intro
+    - https://www.minimax.io/blog
+  anthropic:
+    display_name: Anthropic
+    official_sources:
+    - https://www.anthropic.com/claude
+    - https://docs.anthropic.com/claude/docs
+models:
+  openai/gpt-5.6-sol:
+    provider: openai
+    model_id: gpt-5.6-sol
+    agent_tool: codex
+    status: stable
+    tier: premium
+    capabilities:
+    - coding
+    - computer_use
+    - long_horizon
+    - long_tool_chain
+    - multimodal
+    - security
+    - tool_use
+    context_tokens: 1050000
+    recommended_tiers:
+    - T3
+    - T4
+    verified_at: '2026-07-16'
+    sources:
+    - https://platform.openai.com/docs/models
+    - https://openai.com/index/gpt-5-6/
+  openai/gpt-5.6-terra:
+    provider: openai
+    model_id: gpt-5.6-terra
+    agent_tool: codex
+    status: stable
+    tier: standard
+    capabilities:
+    - coding
+    - tool_use
+    - general_coding
+    context_tokens: 1050000
+    recommended_tiers:
+    - T1
+    - T2
+    verified_at: '2026-07-16'
+    sources:
+    - https://platform.openai.com/docs/models
+    - https://openai.com/index/gpt-5-6/
+  openai/gpt-5.6-luna:
+    provider: openai
+    model_id: gpt-5.6-luna
+    agent_tool: codex
+    status: stable
+    tier: economy
+    capabilities:
+    - coding
+    - fast
+    - batch
+    - structured
+    context_tokens: 1050000
+    recommended_tiers:
+    - T0
+    - T1
+    verified_at: '2026-07-16'
+    sources:
+    - https://platform.openai.com/docs/models
+    - https://openai.com/index/gpt-5-6/
+  zai/glm-5.2:
+    provider: zai
+    model_id: glm-5.2
+    agent_tool: opencode
+    status: stable
+    tier: premium
+    capabilities:
+    - coding
+    - tool_use
+    - long_horizon
+    - huge_context
+    context_tokens: 1000000
+    recommended_tiers:
+    - T2
+    - T3
+    - T4
+    verified_at: '2026-07-16'
+    sources:
+    - https://docs.z.ai/guides/llm/glm-5.2
+  zai/glm-5-turbo:
+    # PROPOSED: referenced only by references/multimodel-coding-agent-routing-guide.md.
+    # NOT wired into runtime code (routing-parser.sh, fallback-dispatcher.sh, model-selector.sh).
+    # Used only as the primary of the proposed `long_tool_chain` route.
+    provider: zai
+    model_id: glm-5-turbo
+    agent_tool: opencode
+    status: proposed
+    tier: specialized
+    capabilities:
+    - coding
+    - tool_use
+    - long_tool_chain
+    context_tokens: null
+    recommended_tiers:
+    - T2
+    - T3
+    verified_at: '2026-07-16'
+    sources:
+    - https://docs.z.ai/guides/llm/glm-5-turbo
+  zai/glm-4.7:
+    provider: zai
+    model_id: glm-4.7
+    agent_tool: opencode
+    status: stable
+    tier: standard
+    capabilities:
+    - coding
+    - tool_use
+    - general_coding
+    context_tokens: 200000
+    recommended_tiers:
+    - T1
+    - T2
+    verified_at: '2026-07-16'
+    sources:
+    - https://docs.z.ai/guides/llm/glm-4.7
+  zai/glm-4.7-flash:
+    # PROPOSED: registered in openai.yaml but rejected by routing-parser.sh::is_model_valid().
+    # NOT in any runtime fallback chain.
+    provider: zai
+    model_id: glm-4.7-flash
+    agent_tool: opencode
+    status: proposed
+    tier: economy
+    capabilities:
+    - coding
+    - fast
+    - batch
+    context_tokens: 200000
+    recommended_tiers:
+    - T0
+    - T1
+    verified_at: '2026-07-16'
+    sources:
+    - https://docs.z.ai/guides/llm/glm-4.7
+  zai/glm-5v-turbo:
+    # PROPOSED: referenced only by references/multimodel-coding-agent-routing-guide.md and
+    # references/fallback-table.md. NOT in fallback-dispatcher.sh's agy|gemini-3.5-flash chain.
+    # The fallback-table.md documentation is itself out of sync with code (tracked separately).
+    provider: zai
+    model_id: glm-5v-turbo
+    agent_tool: opencode
+    status: proposed
+    tier: standard
+    capabilities:
+    - coding
+    - vision
+    - multimodal
+    - tool_use
+    context_tokens: null
+    recommended_tiers:
+    - T1
+    - T2
+    verified_at: '2026-07-16'
+    sources:
+    - https://docs.z.ai/
+  xai/grok-4.5:
+    provider: xai
+    model_id: grok-4.5
+    agent_tool: grok
+    status: stable
+    tier: standard
+    capabilities:
+    - coding
+    - tool_use
+    - terminal
+    - systems
+    - fast
+    context_tokens: 500000
+    recommended_tiers:
+    - T1
+    - T2
+    - T3
+    verified_at: '2026-07-16'
+    sources:
+    - https://docs.x.ai/docs/models
+    - https://x.ai/news/grok-4-5
+  google/gemini-3.5-flash:
+    provider: google
+    model_id: gemini-3.5-flash
+    agent_tool: agy
+    status: stable
+    tier: standard
+    capabilities:
+    - coding
+    - tool_use
+    - multimodal
+    - agentic
+    - fast
+    context_tokens: null
+    recommended_tiers:
+    - T1
+    - T2
+    verified_at: '2026-07-16'
+    sources:
+    - https://ai.google.dev/gemini-api/docs/models
+  google/gemini-3.1-pro-preview:
+    provider: google
+    model_id: gemini-3.1-pro-preview
+    agent_tool: agy
+    status: preview
+    tier: premium
+    capabilities:
+    - coding
+    - tool_use
+    - multimodal
+    - reasoning
+    context_tokens: null
+    recommended_tiers:
+    - T3
+    verified_at: '2026-07-16'
+    sources:
+    - https://ai.google.dev/gemini-api/docs/models
+  google/gemini-3.1-flash-lite:
+    provider: google
+    model_id: gemini-3.1-flash-lite
+    agent_tool: agy
+    status: stable
+    tier: economy
+    capabilities:
+    - fast
+    - batch
+    - structured
+    context_tokens: null
+    recommended_tiers:
+    - T0
+    - T1
+    verified_at: '2026-07-16'
+    sources:
+    - https://ai.google.dev/gemini-api/docs/models
+  minimax/MiniMax-M3:
+    provider: minimax
+    model_id: MiniMax-M3
+    agent_tool: opencode
+    status: stable
+    tier: premium
+    capabilities:
+    - coding
+    - huge_context
+    - long_horizon
+    - long_tool_chain
+    - multimodal
+    - tool_use
+    context_tokens: 1000000
+    recommended_tiers:
+    - T2
+    - T3
+    - T4
+    verified_at: '2026-07-16'
+    sources:
+    - https://platform.minimax.io/docs/guides/models-intro
+    - https://www.minimax.io/blog/minimax-m3
+  minimax/MiniMax-M2.7:
+    provider: minimax
+    model_id: MiniMax-M2.7
+    agent_tool: opencode
+    status: stable
+    tier: standard
+    capabilities:
+    - coding
+    - tool_use
+    - general_coding
+    context_tokens: 204800
+    recommended_tiers:
+    - T1
+    - T2
+    verified_at: '2026-07-16'
+    sources:
+    - https://platform.minimax.io/docs/guides/models-intro
+    - https://www.minimax.io/models/text/m27
+  minimax/MiniMax-M2.7-highspeed:
+    provider: minimax
+    model_id: MiniMax-M2.7-highspeed
+    agent_tool: opencode
+    status: stable
+    tier: economy
+    capabilities:
+    - coding
+    - fast
+    - batch
+    context_tokens: 204800
+    recommended_tiers:
+    - T0
+    - T1
+    verified_at: '2026-07-16'
+    sources:
+    - https://platform.minimax.io/docs/guides/models-intro
+  anthropic/claude-default:
+    # Claude CLI does not accept --model; it uses its own default.
+    # Acts as the ultimate fallback safety net in every routing chain,
+    # matching fallback-dispatcher.sh's claude|default terminator (all 8 chains).
+    # model_id "claude-default" does not start with MiniMax- so passes the
+    # claude agent compatibility rule (denied_model_patterns: ['^MiniMax-']).
+    provider: anthropic
+    model_id: claude-default
+    agent_tool: claude
+    status: stable
+    tier: specialized
+    capabilities:
+    - coding
+    - tool_use
+    - general_coding
+    - multimodal
+    context_tokens: null
+    recommended_tiers:
+    - T0
+    - T1
+    - T2
+    - T3
+    - T4
+    verified_at: '2026-07-16'
+    sources:
+    - https://www.anthropic.com/claude
+task_tiers:
+  T0:
+    description: Read, summarize, classify, or deterministic transformation
+    risk: low
+  T1:
+    description: One or two files with explicit acceptance criteria
+    risk: low
+  T2:
+    description: Multiple files with ordinary design choices
+    risk: medium
+  T3:
+    description: Repository-wide, ambiguous, or architecture-affecting work
+    risk: high
+  T4:
+    description: Long-running, multi-system, production, security, financial, or destructive-risk work
+    risk: critical
+# Route primary/fallbacks use the format: `<agent_tool>|<provider>/<model_id>`
+# This mirrors the runtime fallback-dispatcher.sh chain strings (`agent|model`)
+# with the provider namespace prepended for SSOT self-containment.
+# Every chain MUST terminate with `claude|anthropic/claude-default` (the universal
+# safety net) to match the runtime invariant that all 8 chains end with claude|default.
+routes:
+  tiny:
+    # Code route name: tiny (routing-parser.sh::judge_task_routing).
+    # Maps to fallback-dispatcher.sh primary codex|gpt-5.6-luna chain.
+    eligible_tiers:
+    - T0
+    - T1
+    required_capabilities: []
+    primary: codex|openai/gpt-5.6-luna
+    fallbacks:
+    - claude|anthropic/claude-default
+    max_attempts_per_model: 2
+  standard_repo:
+    # Code route name: standard.
+    # Maps to fallback-dispatcher.sh primary codex|gpt-5.6-terra chain.
+    eligible_tiers:
+    - T1
+    - T2
+    required_capabilities:
+    - coding
+    - tool_use
+    primary: codex|openai/gpt-5.6-terra
+    fallbacks:
+    - codex|openai/gpt-5.6-luna
+    - opencode|zai/glm-5.2
+    - agy|google/gemini-3.5-flash
+    - claude|anthropic/claude-default
+    max_attempts_per_model: 2
+  hard_repo:
+    # Code route name: hard.
+    # Maps to fallback-dispatcher.sh primary codex|gpt-5.6-sol chain.
+    eligible_tiers:
+    - T3
+    - T4
+    required_capabilities:
+    - coding
+    - tool_use
+    primary: codex|openai/gpt-5.6-sol
+    fallbacks:
+    - codex|openai/gpt-5.6-terra
+    - opencode|zai/glm-5.2
+    - agy|google/gemini-3.5-flash
+    - grok|xai/grok-4.5
+    - claude|anthropic/claude-default
+    max_attempts_per_model: 1
+  huge_context:
+    # Code route name: huge.
+    # Maps to fallback-dispatcher.sh primary opencode|glm-5.2 chain.
+    eligible_tiers:
+    - T2
+    - T3
+    - T4
+    required_capabilities:
+    - huge_context
+    primary: opencode|zai/glm-5.2
+    fallbacks:
+    - opencode|zai/glm-4.7
+    - codex|openai/gpt-5.6-terra
+    - agy|google/gemini-3.5-flash
+    - grok|xai/grok-4.5
+    - claude|anthropic/claude-default
+    max_attempts_per_model: 1
+  visual_browser:
+    # Code route name: visual.
+    # Maps to fallback-dispatcher.sh primary agy|gemini-3.5-flash chain.
+    # NOTE: references/fallback-table.md lists glm-5v-turbo and MiniMax-M3 in this
+    # chain, but the runtime code does not - that doc/code mismatch is tracked
+    # separately and is out of scope for SSOT Phase 1.
+    eligible_tiers:
+    - T1
+    - T2
+    - T3
+    required_capabilities:
+    - multimodal
+    primary: agy|google/gemini-3.5-flash
+    harness: antigravity
+    fallbacks:
+    - agy|google/gemini-3.1-pro-preview
+    - opencode|zai/glm-5.2
+    - claude|anthropic/claude-default
+    max_attempts_per_model: 1
+  review:
+    # Code route name: review (independent route per routing-parser.sh::judge_task_routing
+    # case 'review'). Uses the same primary (codex|gpt-5.6-sol) and therefore the
+    # same fallback chain as hard_repo.
+    eligible_tiers:
+    - T3
+    - T4
+    required_capabilities:
+    - coding
+    - tool_use
+    primary: codex|openai/gpt-5.6-sol
+    fallbacks:
+    - codex|openai/gpt-5.6-terra
+    - opencode|zai/glm-5.2
+    - agy|google/gemini-3.5-flash
+    - grok|xai/grok-4.5
+    - claude|anthropic/claude-default
+    max_attempts_per_model: 1
+  long_tool_chain:
+    # PROPOSED: no equivalent route exists in routing-parser.sh::judge_task_routing
+    # and no fallback chain in fallback-dispatcher.sh uses glm-5-turbo.
+    # Retained as a design proposal; status will flip to active once code is wired.
+    status: proposed
+    eligible_tiers:
+    - T2
+    - T3
+    required_capabilities:
+    - long_tool_chain
+    primary: opencode|zai/glm-5-turbo
+    fallbacks:
+    - codex|openai/gpt-5.6-sol
+    - opencode|minimax/MiniMax-M3
+    - claude|anthropic/claude-default
+    max_attempts_per_model: 1
+selection_policy:
+  hard_exclusions:
+  - model_status_deprecated
+  - model_unavailable
+  - missing_required_capability
+  - provider_disabled
+  - cost_budget_exceeded
+  - region_or_data_policy_violation
+  scoring:
+    internal_regression_score: 35
+    task_fit: 20
+    reliability: 15
+    security_compliance: 10
+    latency: 8
+    cost: 7
+    provider_diversity: 5
+  tie_breakers:
+  - stable_over_preview
+  - lower_failure_rate
+  - lower_cost
+  - lower_latency
+review_policy:
+  required_for:
+  - T3
+  - T4
+  - security_sensitive
+  - production_change
+  - destructive_change
+  provider_must_differ_from_implementer: true
+  reviewer_must_not_share_model_family: true
+  minimum_reviewers:
+    T3: 1
+    T4: 2
+  human_approval_required_for:
+  - T4
+  - production_change
+  - destructive_change
+  - secrets_access
+  - iam_change
+execution_policy:
+  default_mode: read_only
+  network_default: deny
+  write_mode: patch_only
+  destructive_commands: deny
+  secret_paths:
+  - .env
+  - '**/*secret*'
+  - '**/*credential*'
+  - ~/.ssh/**
+  audit_fields:
+  - task_id
+  - ssot_version
+  - ssot_sha256
+  - provider
+  - model
+  - harness
+  - tool_calls
+  - changed_files
+  - tests
+  - exit_codes
+  - policy_events
+  success_requires:
+  - nonempty_diff_or_explicit_no_change
+  - allowed_paths_only
+  - acceptance_tests_recorded
+  - exit_codes_recorded
+  - secret_scan_pass
+  - policy_validation_pass
+no_progress_policy:
+  same_failure_limit: 2
+  meaningless_same_file_edits_limit: 3
+  tool_calls_without_progress_limit: 10
+  budget_escalation_threshold_percent: 80
+evaluation_policy:
+  external_benchmarks_are_advisory: true
+  external_benchmark_requires:
+  - name
+  - score
+  - metric
+  - harness
+  - evaluated_at
+  - source_url
+  routing_decisions_use_internal_regression_first: true
+  internal_regression_frequency: monthly
+  minimum_samples_per_route: 20
+  promotion_requires:
+    success_rate_not_worse_than_current_percent: 2
+    no_security_regression: true
+    cost_or_latency_improvement_required_when_quality_equal: true
+update_policy:
+  checks:
+    provider_model_status: weekly
+    pricing_and_quota: weekly_and_before_release
+    provider_release_notes: weekly
+    external_benchmarks: on_release
+    internal_regression: monthly
+    security_and_mcp_policy: quarterly
+  automation_output: candidate_patch_only
+  auto_merge: false
+  required_pipeline:
+  - collect_official_sources
+  - normalize_candidate_json
+  - verify_urls_and_dates
+  - validate_schema
+  - validate_semantics
+  - run_internal_regression
+  - generate_markdown_docs
+  - show_diff
+  - cross_provider_review
+  - human_approval
+  - merge
