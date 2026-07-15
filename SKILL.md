@@ -455,7 +455,14 @@ kant-loop.sh cleanup --apply
 
 ### 자동 라우팅 (T0~T4)
 
-`routing-parser.sh`가 `references/multimodel-coding-agent-routing-guide.md`를 매번 파싱해서 동적으로 결정. 코드에 박힌 매핑 없음. 가이드 갱신 시 자동 반영.
+판정 규칙의 SSOT는 **코드**다. `scripts/lib/routing-parser.sh`의
+`judge_task_routing()` (lines 248-541), `classify_task_intent()` (lines 568-593),
+`estimate_complexity()` (lines 595-612)가 intent/complexity를 grep 패턴으로 판정한다.
+가이드 문서(`references/multimodel-coding-agent-routing-guide.md`)를 파싱하는 것은
+**모델명만** (`parse_routing_guide`, lines 45-94): gpt-5.6-luna/terra/sol,
+glm-5.2, grok-4.5, gemini-3.5-flash. 가이드의 모델명 갱신 시 KANT_PRIMARY_*
+변수가 자동 반영되고, route 매핑도 따라 바뀐다. intent·complexity 규칙을
+바꾸려면 `routing-parser.sh` 코드를 수정하고 테스트를 함께 고칠 것.
 
 | 키워드 | 라우트 |
 |---|---|
@@ -466,6 +473,12 @@ kant-loop.sh cleanup --apply
 | 리뷰, verify, audit | codex (gpt-5.6-sol) |
 | 1M, huge, large repo | opencode (glm-5.2) |
 | 기본 | codex (gpt-5.6-terra) |
+
+**유지보수 절차**: intent·complexity 규칙을 변경하면 `scripts/lib/routing-parser.sh`의
+해당 함수와 `scripts/tests/test-meta-aware-routing.sh` 테스트를 함께 고칠 것.
+가이드 문서(`references/multimodel-coding-agent-routing-guide.md`)는 모델 정보
+출처이지 판정 규칙 출처가 아니다. 판정 규칙 변경 시 문서 갱신은 선택이며,
+코드+테스트 변경이 우선.
 
 ### 안전 약속 (절대 위반 안 됨)
 

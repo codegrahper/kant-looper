@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
-# routing-parser.sh — 라우팅 가이드 동적 파싱 + TASK 키워드 → 도구/모델 매핑
+# routing-parser.sh — TASK 키워드 → 도구/모델 매핑
 #
-# 코드에 박힌 매핑 없음. references/multimodel-coding-agent-routing-guide.md를
-# 매번 파싱해서 동적으로 결정. 가이드가 업데이트되면 코드 수정 없이 자동 반영.
+# 판정 규칙의 SSOT는 코드: intent/complexity 규칙은 judge_task_routing()
+# (lines 248-541), classify_task_intent(), estimate_complexity()에 Bash grep
+# 패턴으로 구현. 가이드 문서에서 파싱하는 것은 **모델명만** (parse_routing_guide,
+# lines 45-94): gpt-5.6-luna/terra/sol, glm-5.2, grok-4.5, gemini-3.5-flash.
+# 가이드의 모델명 갱신 시 KANT_PRIMARY_* 변수가 자동 반영되는 구조.
+# intent·complexity·route 결정 규칙을 바꾸려면 코드를 수정할 것.
 #
 # bash 3.2 호환 (macOS 기본 bash). associative array 사용 안 함.
 # 출처: codex-agent-loop-v4.sh:extract_json_object 패턴 + routing 가이드 8절.
@@ -241,63 +245,330 @@ _select_valid_fallback() {
 }
 
 # ---------------------------------------------------------------------------
-# 메타 에이전트 판단 기반 라우팅
+# 단일 판정 함수: intent + complexity + route + reason을 한 번에 계산
+# Evidence scoring 방식 - 단일 키워드 매칭이 아닌 신호 점수화
+# ---------------------------------------------------------------------------
+
+judge_task_routing() {
+  local task_file="${1:-}"
+
+  if [ -z "$task_file" ] || [ ! -f "$task_file" ]; then
+    echo "ERROR: judge_task_routing requires a valid task file" >&2
+    return 1
+  fi
+
+  local task_text task_lc
+  task_text="$(cat "$task_file" 2>/dev/null || true)"
+  task_lc="$(printf '%s' "$task_text" | tr '[:upper:]' '[:lower:]')"
+
+  # ------------------------------------------------------------
+  # 신호 점수 계산 (양수=긍정, 음수=부정)
+  # ------------------------------------------------------------
+
+  # UI 신호
+  local ui_score=0
+  local ui_signals=""
+  local ui_neg_signals=""
+
+  # 강한 긍정 신호 (+3)
+  if printf '%s' "$task_lc" | grep -qE '접근성|웹 접근성|a11y|accessibility'; then
+    ui_score=$((ui_score + 3))
+    ui_signals="${ui_signals},accessibility"
+  fi
+  if printf '%s' "$task_lc" | grep -qE 'visual regression|시각적 회귀|screenshot|스크린샷|브라우저 렌더링|browser rendering'; then
+    ui_score=$((ui_score + 3))
+    ui_signals="${ui_signals},visual-regression"
+  fi
+  if printf '%s' "$task_lc" | grep -qE '브라우저 자동화|browser automation|computer use|computer-use'; then
+    ui_score=$((ui_score + 3))
+    ui_signals="${ui_signals},browser-automation"
+  fi
+
+  # 중간 긍정 신호 (+2)
+  if printf '%s' "$task_lc" | grep -qE 'css|layout|component|frontend|ui |tailwind|modal|drawer|screen|stitch'; then
+    ui_score=$((ui_score + 2))
+    ui_signals="${ui_signals},css-layout-component"
+  fi
+
+  # 강한 부정 신호 (-3): 파일/디렉터리 접근 권한 문맥
+  if printf '%s' "$task_lc" | grep -qE '파일 접근|파일 권한|directory permission|file permission|접근 허용|접근 제어|권한 확인|permission check'; then
+    ui_score=$((ui_score - 3))
+    ui_neg_signals="${ui_neg_signals},file-permission-context"
+  fi
+
+  # 중간 부정 신호 (-2): CLI/Bash/Adapter 문맥
+  if printf '%s' "$task_lc" | grep -qE 'bash|shell|adapter|parser|routing|cli '; then
+    ui_score=$((ui_score - 2))
+    ui_neg_signals="${ui_neg_signals},cli-adapter-context"
+  fi
+
+  # DEBUG 신호
+  local debug_score=0
+  local debug_signals=""
+
+  # 강한 긍정 신호 (+3)
+  if printf '%s' "$task_lc" | grep -qE '버그|bug|오류|error|에러|장애|fail|broken|재현|reproduce|수정|fix'; then
+    debug_score=$((debug_score + 3))
+    debug_signals="${debug_signals},bug-error-fix"
+  fi
+
+  # 중간 긍정 신호 (+2)
+  if printf '%s' "$task_lc" | grep -qE 'parser|routing|regression|회귀|adapter|expect.*actual|actual.*expect'; then
+    debug_score=$((debug_score + 2))
+    debug_signals="${debug_signals},parser-routing-regression"
+  fi
+
+  # REFACTOR 신호
+  local refactor_score=0
+  local refactor_signals=""
+
+  # 강한 긍정 신호 (+3)
+  if printf '%s' "$task_lc" | grep -qE '리팩터|refactor|공통화|중복 제거|duplicate removal|refactor'; then
+    refactor_score=$((refactor_score + 3))
+    refactor_signals="${refactor_signals},refactor-commonize"
+  fi
+
+  # 중간 긍정 신호 (+2)
+  if printf '%s' "$task_lc" | grep -qE '함수 추출|extract function|structure 개선|restructure|migration|migrate|마이그레이션|cleanup'; then
+    refactor_score=$((refactor_score + 2))
+    refactor_signals="${refactor_signals},extract-restructur-migration"
+  fi
+
+  # TEST 신호
+  local test_score=0
+  local test_signals=""
+
+  # 강한 긍정 신호 (+3): 테스트 작성/추가
+  if printf '%s' "$task_lc" | grep -qE '테스트 작성|테스트 추가|테스트 생성|테스트 구현|unit test|write test|add test|create test|테스트만|fixture|mock|snapshot'; then
+    test_score=$((test_score + 3))
+    test_signals="${test_signals},test-creation"
+  fi
+
+  # REVIEW 신호
+  local review_score=0
+  local review_signals=""
+
+  # 강한 긍정 신호 (+3)
+  if printf '%s' "$task_lc" | grep -qE '리뷰|review|검증|verify|감사|audit|inspect|점검'; then
+    review_score=$((review_score + 3))
+    review_signals="${review_signals},review-audit"
+  fi
+
+  # DOCS 신호
+  local docs_score=0
+  local docs_signals=""
+
+  if printf '%s' "$task_lc" | grep -qE '문서|주석|readme|문서화|docs?|comment'; then
+    docs_score=$((docs_score + 2))
+    docs_signals="${docs_signals},docs-comment"
+  fi
+
+  # CLI 신호
+  local cli_score=0
+  local cli_signals=""
+
+  if printf '%s' "$task_lc" | grep -qE '터미널|terminal|cli |shell|bash|zsh|^rust|c\+\+|system|kernel'; then
+    cli_score=$((cli_score + 2))
+    cli_signals="${cli_signals},terminal-system"
+  fi
+
+  # RESEARCH 신호
+  local research_score=0
+  local research_signals=""
+
+  if printf '%s' "$task_lc" | grep -qE '조사|분석|탐색|research|investigate|analyze|explore'; then
+    research_score=$((research_score + 2))
+    research_signals="${research_signals},research-analyze"
+  fi
+
+  # ------------------------------------------------------------
+  # UI 안전장치: 강한 신호 없으면 UI 선택 안 함
+  # ------------------------------------------------------------
+  local has_strong_ui_signal=0
+  if printf '%s' "$task_lc" | grep -qE '접근성|웹 접근성|a11y|accessibility|visual regression|시각적 회귀|screenshot|스크린샷|브라우저 렌더링|browser rendering|브라우저 자동화|browser automation|computer use'; then
+    has_strong_ui_signal=1
+  fi
+
+  if [ "$has_strong_ui_signal" = "0" ] && [ "$ui_score" -lt 3 ]; then
+    ui_score=0
+  fi
+
+  # ------------------------------------------------------------
+  # Intent 선택 (최고 점수, 동점이면 규칙 적용)
+  # ------------------------------------------------------------
+
+  local primary_intent="implement"
+  local secondary_intents=""
+  local best_score=0
+
+  # 점수 비교
+  if [ "$debug_score" -gt "$best_score" ]; then
+    best_score=$debug_score; primary_intent="debug"
+  fi
+  if [ "$refactor_score" -gt "$best_score" ]; then
+    best_score=$refactor_score; primary_intent="refactor"
+  fi
+  if [ "$test_score" -gt "$best_score" ]; then
+    best_score=$test_score; primary_intent="test"
+  fi
+  if [ "$review_score" -gt "$best_score" ]; then
+    best_score=$review_score; primary_intent="review"
+  fi
+  if [ "$docs_score" -gt "$best_score" ]; then
+    best_score=$docs_score; primary_intent="docs"
+  fi
+  if [ "$cli_score" -gt "$best_score" ]; then
+    best_score=$cli_score; primary_intent="cli"
+  fi
+  if [ "$research_score" -gt "$best_score" ]; then
+    best_score=$research_score; primary_intent="research"
+  fi
+  if [ "$ui_score" -gt "$best_score" ]; then
+    best_score=$ui_score; primary_intent="ui"
+  fi
+
+  # 동점 처리: 점수가 0보다 클 때만 적용 (모두 0이면 implement 유지)
+  if [ "$best_score" -gt 0 ]; then
+    if [ "$debug_score" -eq "$best_score" ] && [ "$primary_intent" != "debug" ]; then
+      case "$primary_intent" in
+        implement|research|cli) primary_intent="debug" ;;
+      esac
+    fi
+    if [ "$refactor_score" -eq "$best_score" ] && [ "$primary_intent" != "refactor" ]; then
+      case "$primary_intent" in
+        implement|research|cli) primary_intent="refactor" ;;
+      esac
+    fi
+    # Strong UI signal beats test when tied
+    if [ "$ui_score" -eq "$best_score" ] && [ "$primary_intent" = "test" ] && [ "$has_strong_ui_signal" = "1" ]; then
+      primary_intent="ui"
+    fi
+  fi
+
+  # bash/cli context: cli_score captures both; preserve explicit intent over context override
+
+  # secondary signals 수집
+  local all_signals=""
+  [ -n "$debug_signals" ] && all_signals="${all_signals}${debug_signals}"
+  [ -n "$refactor_signals" ] && all_signals="${all_signals}${refactor_signals}"
+  [ -n "$test_signals" ] && all_signals="${all_signals}${test_signals}"
+  [ -n "$review_signals" ] && all_signals="${all_signals}${review_signals}"
+  [ -n "$ui_signals" ] && all_signals="${all_signals}${ui_signals}"
+  [ -n "$docs_signals" ] && all_signals="${all_signals}${docs_signals}"
+  [ -n "$cli_signals" ] && all_signals="${all_signals}${cli_signals}"
+  [ -n "$research_signals" ] && all_signals="${all_signals}${research_signals}"
+
+  # secondary intents 추출 (primary 제외)
+  local secondary_list=""
+  [ "$primary_intent" != "debug" ] && [ "$debug_score" -gt 0 ] && secondary_list="${secondary_list},debug"
+  [ "$primary_intent" != "refactor" ] && [ "$refactor_score" -gt 0 ] && secondary_list="${secondary_list},refactor"
+  [ "$primary_intent" != "test" ] && [ "$test_score" -gt 0 ] && secondary_list="${secondary_list},test"
+  [ "$primary_intent" != "review" ] && [ "$review_score" -gt 0 ] && secondary_list="${secondary_list},review"
+  [ "$primary_intent" != "ui" ] && [ "$ui_score" -gt 0 ] && secondary_list="${secondary_list},ui"
+
+  # ------------------------------------------------------------
+  # Complexity 판정 (구조적 신호 우선)
+  # ------------------------------------------------------------
+
+  local complexity="T1"
+
+  # T4: 1M 컨텍스트 / 대형 저장소 / 장기 / 다중 시스템
+  if printf '%s' "$task_lc" | grep -qE '1m[-[:space:]]*(context|컨텍스트)|huge|large repo|large repository|entire codebase|대형 저장소|전체 코드베이스|장기|다중 시스템|architecture|architectural|아키텍처|설계 변경'; then
+    complexity="T4"
+  # T3: 저장소 전체 / 다수 독립 서브시스템 / 공개 인터페이스 변경 / 마이그레이션
+  elif printf '%s' "$task_lc" | grep -qE '전체[[:space:]]+(저장소|코드베이스)|저장소[[:space:]]+전체|(entire|whole)[[:space:]]+(repository|repo|codebase)|(repository|repo|codebase)[[:space:]]+(wide|전체)|리팩터|마이그레이션|restructure|migrate'; then
+    complexity="T3"
+  # T2: 여러 파일 / 여러 모듈 / 설계 판단
+  elif printf '%s' "$task_lc" | grep -qE '여러|several|multiple|across[[:space:]]+(multiple|several|[0-9]+|files?|modules?|components?|repository|repo|codebase)|integration|integrate|연동|통합|설계'; then
+    complexity="T2"
+  # T0: 읽기 / 요약 / 추출 / 정형 변환
+  elif printf '%s' "$task_lc" | grep -qE '읽기|요약|추출|정형|변환|read |summary|extract|transform|간단|small'; then
+    complexity="T0"
+  else
+    complexity="T1"
+  fi
+
+  # ------------------------------------------------------------
+  # Route 결정
+  # ------------------------------------------------------------
+
+  local route_name
+  case "$primary_intent" in
+    test)     route_name="tiny" ;;
+    ui)       route_name="visual" ;;
+    review)   route_name="review" ;;
+    refactor) route_name="huge" ;;
+    debug|docs|cli|research|implement|"") route_name="standard" ;;
+    *)        route_name="standard" ;;
+  esac
+
+  # complexityOverride for T3/T4
+  if [ "$complexity" = "T4" ]; then
+    route_name="huge"
+  elif [ "$complexity" = "T3" ]; then
+    case "$primary_intent" in
+      implement|debug|research) route_name="hard" ;;
+    esac
+  fi
+
+  # route candidate 가져오기
+  parse_routing_guide
+  local candidate="$(_get_route_candidate "$route_name" "primary")"
+
+  # ------------------------------------------------------------
+  # 출력 형식
+  # ------------------------------------------------------------
+
+  # reason 문자열 구성
+  local reason_str="intent:${primary_intent};complexity:${complexity};route:${route_name}"
+  if [ -n "$all_signals" ]; then
+    # 첫 번째 쉼표 제거
+    reason_str="${reason_str};signals:${all_signals#,}"
+  fi
+  if [ -n "$secondary_list" ]; then
+    reason_str="${reason_str};secondary:${secondary_list#,}"
+  fi
+
+  # judge_task_routing 레벨에서는 health check 없음
+  # effective_route = judged_route (health check는 실행 시 수행)
+  local effective_route="$candidate"
+  local fb_reason=""
+
+  # 현재 judge 레벨에서는 health check/fallback 없음
+  # future: health check 실패 시 fallback 적용 로직 추가 가능
+
+  # 기계 판독 가능한 출력
+  printf 'intent=%s\n' "$primary_intent"
+  printf 'complexity=%s\n' "$complexity"
+  printf 'judged_route=%s\n' "$candidate"
+  printf 'effective_route=%s\n' "$effective_route"
+  printf 'fallback_reason=%s\n' "$fb_reason"
+  printf 'reason=%s\n' "$reason_str"
+}
+
+# ---------------------------------------------------------------------------
+# 메타 에이전트 판단 기반 라우팅 (judge_task_routing으로 통합)
 # ---------------------------------------------------------------------------
 
 match_with_judgment() {
+  # --intent and --complexity arguments are now ignored (calculated internally)
+  # maintained for backward compatibility
   local task_file=""
-  local intent="" complexity=""
-
   while [ $# -gt 0 ]; do
     case "$1" in
-      --intent=*) intent="${1#--intent=}" ;;
-      --complexity=*) complexity="${1#--complexity=}" ;;
+      --intent=*|--complexity=*) ;;  # ignore, judge_task_routing calculates
       *)
         if [ -z "$task_file" ]; then task_file="$1"; fi ;;
     esac
     shift
   done
 
-  if [ -z "$intent" ] || [ -z "$complexity" ]; then
-    echo "ERROR: --intent and --complexity are required" >&2
+  if [ -z "$task_file" ]; then
+    echo "ERROR: task file required" >&2
     return 1
   fi
 
-  parse_routing_guide
-
-  local route="$(_intent_to_route "$intent")"
-
-  case "$complexity" in
-    T4) route="huge" ;;
-    T3)
-      if [ "$intent" = "implement" ] || [ "$intent" = "debug" ] || [ "$intent" = "research" ]; then
-        route="hard"
-      fi
-      ;;
-  esac
-
-  local candidate="$(_get_route_candidate "$route" "primary")"
-
-  if _validate_candidate "$candidate"; then
-    echo "$candidate"
-    return 0
-  fi
-
-  local tool="${candidate%%:*}"
-  local model="${candidate#*:}"
-  local fb_chain
-  fb_chain="$("$LIB_DIR/fallback-dispatcher.sh" chain "$tool" "$model" 2>/dev/null || true)"
-
-  if [ -n "$fb_chain" ]; then
-    local selected
-    selected="$(_select_valid_fallback "$fb_chain")"
-    if [ -n "$selected" ]; then
-      echo "$selected"
-      return 0
-    fi
-  fi
-
-  echo "claude:${KANT_CLAUDE_MODEL}"
+  judge_task_routing "$task_file"
 }
 
 classify_task_intent() {
@@ -306,9 +577,9 @@ classify_task_intent() {
   task_text="$(cat "$task_file" 2>/dev/null || true)"
   task_lc="$(printf '%s' "$task_text" | tr '[:upper:]' '[:lower:]')"
 
-  if printf '%s' "$task_lc" | grep -qE 'ui |component|screen|stitch|modal|drawer|tailwind|css|frontend|접근|사용자 인터페이스'; then
+  if printf '%s' "$task_lc" | grep -qE 'ui |component|screen|stitch|modal|drawer|tailwind|css|frontend|접근성|a11y|accessibility|사용자 인터페이스'; then
     echo "ui"
-  elif printf '%s' "$task_lc" | grep -qE '리뷰|검증|감사|review|verify|audit|inspect|점검|확인해'; then
+  elif printf '%s' "$task_lc" | grep -qE '리뷰|검증|감사|review|verify|audit|inspect|점검'; then
     echo "review"
   elif printf '%s' "$task_lc" | grep -qE '리팩터|마이그레이션|대규모|cleanup|restructure|refactor|migrate|rewrite'; then
     echo "refactor"
@@ -333,11 +604,11 @@ estimate_complexity() {
   task_text="$(cat "$task_file" 2>/dev/null || true)"
   task_lc="$(printf '%s' "$task_text" | tr '[:upper:]' '[:lower:]')"
 
-  if printf '%s' "$task_lc" | grep -qE '1m|huge|large repo|entire codebase|대형 저장소|전체 코드베이스|장기|다중 시스템|arch|설계 변경'; then
+  if printf '%s' "$task_lc" | grep -qE '1m[-[:space:]]*(context|컨텍스트)|huge|large repo|large repository|entire codebase|대형 저장소|전체 코드베이스|장기|다중 시스템|architecture|architectural|아키텍처|설계 변경'; then
     echo "T4"
-  elif printf '%s' "$task_lc" | grep -qE '전체|all |across|repository|저장소 전체|리팩터|마이그레이션|restructure|migrate'; then
+  elif printf '%s' "$task_lc" | grep -qE '전체[[:space:]]+(저장소|코드베이스)|저장소[[:space:]]+전체|(entire|whole)[[:space:]]+(repository|repo|codebase)|(repository|repo|codebase)[[:space:]]+(wide|전체)|리팩터|마이그레이션|restructure|migrate'; then
     echo "T3"
-  elif printf '%s' "$task_lc" | grep -qE '여러|several|multiple|across|integration|integrate|연동|통합|설계'; then
+  elif printf '%s' "$task_lc" | grep -qE '여러|several|multiple|across[[:space:]]+(multiple|several|[0-9]+|files?|modules?|components?|repository|repo|codebase)|integration|integrate|연동|통합|설계'; then
     echo "T2"
   elif printf '%s' "$task_lc" | grep -qE '읽기|요약|추출|정형|변환|read |summary|extract|transform|간단|small'; then
     echo "T0"
@@ -452,7 +723,7 @@ fi
 
 if [ "${1:-}" = "match" ]; then
   shift
-  match_task_to_route "$@"
+  judge_task_routing "$@"
   exit 0
 fi
 
@@ -465,6 +736,12 @@ fi
 if [ "${1:-}" = "match-with-judgment" ]; then
   shift
   match_with_judgment "$@"
+  exit 0
+fi
+
+if [ "${1:-}" = "judge" ]; then
+  shift
+  judge_task_routing "$@"
   exit 0
 fi
 

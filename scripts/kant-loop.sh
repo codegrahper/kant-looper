@@ -529,9 +529,14 @@ EOF
 
 run_parallel_mode() {
   local task_md="$1" state_dir="$2" worktree="$3"
+  local agent_chain="${4:-}"
 
   local route_list
-  route_list="$("$LIB_DIR/routing-parser.sh" slice "$task_md")"
+  if [ -n "$agent_chain" ]; then
+    route_list="$agent_chain"
+  else
+    route_list="$("$LIB_DIR/routing-parser.sh" slice "$task_md")"
+  fi
   log "parallel mode: $route_list"
   log_event "$state_dir" "PARALLEL_CALL chain=$route_list"
 
@@ -657,10 +662,31 @@ $summary"
 
 run_full_mode() {
   local task_md="$1" state_dir="$2" worktree="$3"
+  local agent_chain="${4:-}"
 
-  local plan_agent="opencode" plan_model="glm-5.2"
-  local impl_agent="agy" impl_model="gemini-3.5-flash"
-  local review_agent="codex" review_model="gpt-5.6-sol"
+  if [ -n "$agent_chain" ]; then
+    local plan_agent plan_model impl_agent impl_model review_agent review_model
+    local chain_copy="$agent_chain"
+    local idx=0
+    while [ -n "$chain_copy" ] && [ $idx -lt 3 ]; do
+      local segment="${chain_copy%%,*}"
+      case $idx in
+        0) plan_agent="${segment%%:*}"; plan_model="${segment#*:}" ;;
+        1) impl_agent="${segment%%:*}"; impl_model="${segment#*:}" ;;
+        2) review_agent="${segment%%:*}"; review_model="${segment#*:}" ;;
+      esac
+      if [ "$chain_copy" = "$segment" ]; then
+        chain_copy=""
+      else
+        chain_copy="${chain_copy#*,}"
+      fi
+      idx=$((idx + 1))
+    done
+  else
+    plan_agent="opencode"; plan_model="glm-5.2"
+    impl_agent="agy"; impl_model="gemini-3.5-flash"
+    review_agent="codex"; review_model="gpt-5.6-sol"
+  fi
 
   local round=1
   local verdict="CHANGES_REQUESTED"
@@ -939,9 +965,55 @@ cmd_run() {
     exit 1
   fi
 
+  # --chain 검증: quick 모드 제외 full/parallel만 사용
+  if [ -n "$agent_chain" ] && [ "$mode" = "quick" ]; then
+    echo "--chain은 --parallel 또는 --full 모드에서만 사용할 수 있습니다." >&2
+    exit 1
+  fi
+
+  # --chain 포맷 검증: tool:model,tool:model,...
+  if [ -n "$agent_chain" ]; then
+    local chain_invalid=0
+    local chain_copy="$agent_chain"
+    while [ -n "$chain_copy" ]; do
+      local segment="${chain_copy%%,*}"
+      if ! printf '%s' "$segment" | grep -Eq '^[^:]+:[^:]+$'; then
+        echo "invalid chain segment: '$segment' (expected tool:model)" >&2
+        chain_invalid=1
+        break
+      fi
+      if [ "$chain_copy" = "$segment" ]; then
+        chain_copy=""
+      else
+        chain_copy="${chain_copy#*,}"
+      fi
+    done
+    if [ "$chain_invalid" = "1" ]; then
+      exit 1
+    fi
+    log "chain specified: $agent_chain"
+  fi
+
   if [ "$dry_run" = "1" ]; then
-    local route
-    route="$("$LIB_DIR/routing-parser.sh" match "$task_md")"
+    local judge_output
+    judge_output="$("$LIB_DIR/routing-parser.sh" judge "$task_md")" || true
+    local intent complexity judged_route effective_route fallback_reason reason
+    intent="$(printf '%s' "$judge_output" | grep '^intent=' | cut -d= -f2)"
+    complexity="$(printf '%s' "$judge_output" | grep '^complexity=' | cut -d= -f2)"
+    judged_route="$(printf '%s' "$judge_output" | grep '^judged_route=' | cut -d= -f2)"
+    effective_route="$(printf '%s' "$judge_output" | grep '^effective_route=' | cut -d= -f2)"
+    fallback_reason="$(printf '%s' "$judge_output" | grep '^fallback_reason=' | cut -d= -f2)"
+    reason="$(printf '%s' "$judge_output" | grep '^reason=' | cut -d= -f2)"
+    if [ -n "$agent_chain" ]; then
+      case "$mode" in
+        full)
+          effective_route="chain:$agent_chain"
+          ;;
+        parallel)
+          effective_route="chain:$agent_chain"
+          ;;
+      esac
+    fi
     local slug
     slug="$(task_to_slug "$task_md")"
     local rh
@@ -951,7 +1023,13 @@ cmd_run() {
     echo "dry-run:"
     echo "  mode: $mode"
     echo "  task: $task_md"
-    echo "  route: $route"
+    echo "  intent: ${intent:-unknown}"
+    echo "  complexity: ${complexity:-unknown}"
+    echo "  agent_chain: ${agent_chain:-}"
+    echo "  judged_route: ${judged_route:-unknown}"
+    echo "  effective_route: ${effective_route:-unresolved-until-health-check}"
+    echo "  fallback_reason: ${fallback_reason:-}"
+    echo "  reason: ${reason:-}"
     echo "  run_id: $run_id"
     echo "  state_dir: $STATE_ROOT/$rh/$run_id"
     echo "  branch: $BRANCH_PREFIX/$run_id"
@@ -1004,7 +1082,7 @@ cmd_run() {
 
   if [ "$detach" = "1" ]; then
     log "detach mode — running in background"
-    nohup "$SCRIPT_DIR/kant-loop.sh" _run_mode "$mode" "$task_md" "$state_dir" "$worktree" "$tool" "$model" > "$state_dir/detached.log" 2>&1 &
+    nohup "$SCRIPT_DIR/kant-loop.sh" _run_mode "$mode" "$task_md" "$state_dir" "$worktree" "$tool" "$model" "$agent_chain" > "$state_dir/detached.log" 2>&1 &
     local detached_pid=$!
     echo "$detached_pid" > "$state_dir/detached.pid"
     echo "run_id: $run_id"
@@ -1022,10 +1100,10 @@ cmd_run() {
       run_quick_mode "$task_md" "$tool" "$model" "$state_dir" "$worktree"
       ;;
     parallel)
-      run_parallel_mode "$task_md" "$state_dir" "$worktree"
+      run_parallel_mode "$task_md" "$state_dir" "$worktree" "$agent_chain"
       ;;
     full)
-      run_full_mode "$task_md" "$state_dir" "$worktree"
+      run_full_mode "$task_md" "$state_dir" "$worktree" "$agent_chain"
       ;;
   esac
   local rc=$?
@@ -1081,16 +1159,16 @@ create_worktree() {
 }
 
 _run_mode() {
-  local mode="$1" task_md="$2" state_dir="$3" worktree="$4" tool="$5" model="$6"
+  local mode="$1" task_md="$2" state_dir="$3" worktree="$4" tool="$5" model="$6" agent_chain="$7"
   case "$mode" in
     quick)
       run_quick_mode "$task_md" "$tool" "$model" "$state_dir" "$worktree"
       ;;
     parallel)
-      run_parallel_mode "$task_md" "$state_dir" "$worktree"
+      run_parallel_mode "$task_md" "$state_dir" "$worktree" "$agent_chain"
       ;;
     full)
-      run_full_mode "$task_md" "$state_dir" "$worktree"
+      run_full_mode "$task_md" "$state_dir" "$worktree" "$agent_chain"
       ;;
   esac
 }
