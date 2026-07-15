@@ -1,3 +1,9 @@
 
 # e2e test 부산물
 scripts/lib/target.sh
+
+# macOS 잡파일
+.DS_Store
+
+# OpenCode 세션 런타임 상태
+.omo/run-continuation/*.json
