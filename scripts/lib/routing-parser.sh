@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
-# routing-parser.sh — 라우팅 가이드 동적 파싱 + TASK 키워드 → 도구/모델 매핑
+# routing-parser.sh — TASK 키워드 → 도구/모델 매핑
 #
-# 코드에 박힌 매핑 없음. references/multimodel-coding-agent-routing-guide.md를
-# 매번 파싱해서 동적으로 결정. 가이드가 업데이트되면 코드 수정 없이 자동 반영.
+# 판정 규칙의 SSOT는 코드: intent/complexity 규칙은 judge_task_routing()
+# (lines 248-541), classify_task_intent(), estimate_complexity()에 Bash grep
+# 패턴으로 구현. 가이드 문서에서 파싱하는 것은 **모델명만** (parse_routing_guide,
+# lines 45-94): gpt-5.6-luna/terra/sol, glm-5.2, grok-4.5, gemini-3.5-flash.
+# 가이드의 모델명 갱신 시 KANT_PRIMARY_* 변수가 자동 반영되는 구조.
+# intent·complexity·route 결정 규칙을 바꾸려면 코드를 수정할 것.
 #
 # bash 3.2 호환 (macOS 기본 bash). associative array 사용 안 함.
 # 출처: codex-agent-loop-v4.sh:extract_json_object 패턴 + routing 가이드 8절.
