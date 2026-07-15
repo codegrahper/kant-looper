@@ -37,6 +37,14 @@ export KANT_LIB_DIR="$LIB_DIR"
 export KANT_ADAPTERS_DIR="$ADAPTERS_DIR"
 
 # ---------------------------------------------------------------------------
+# Load SSOT shadow observer (Phase 3/5)
+# ---------------------------------------------------------------------------
+
+if [ -f "$LIB_DIR/ssot-shadow.sh" ]; then
+  source "$LIB_DIR/ssot-shadow.sh"
+fi
+
+# ---------------------------------------------------------------------------
 # 기본 환경값
 # ---------------------------------------------------------------------------
 
@@ -403,7 +411,14 @@ run_quick_mode() {
     fi
   fi
 
-  # CLI 호출 전 호환성 검증
+  if type ssot_shadow_observe &>/dev/null; then
+    local _sj _si _sr
+    _sj="$("$LIB_DIR/routing-parser.sh" judge "$task_md" 2>/dev/null || true)"
+    _si="$(printf '%s' "$_sj" | grep '^intent=' | cut -d= -f2)"
+    _sr="$(printf '%s' "$_sj" | grep '^reason=' | cut -d= -f2- | sed -n 's/.*route:\([^;]*\).*/\1/p')"
+    ssot_shadow_observe "${_si:-}" "${_sr:-}" "${tool}:${model}" "quick-routed" || true
+  fi
+
   if ! validate_agent_model_compatibility "$tool" "$model"; then
     fail_run "$state_dir" "INCOMPATIBLE_AGENT_MODEL" "tool=$tool model=$model"
     return 1
@@ -536,6 +551,13 @@ run_parallel_mode() {
     route_list="$agent_chain"
   else
     route_list="$("$LIB_DIR/routing-parser.sh" slice "$task_md")"
+  fi
+  if type ssot_shadow_observe &>/dev/null; then
+    local _sj _si _sr
+    _sj="$("$LIB_DIR/routing-parser.sh" judge "$task_md" 2>/dev/null || true)"
+    _si="$(printf '%s' "$_sj" | grep '^intent=' | cut -d= -f2)"
+    _sr="$(printf '%s' "$_sj" | grep '^reason=' | cut -d= -f2- | sed -n 's/.*route:\([^;]*\).*/\1/p')"
+    ssot_shadow_observe "${_si:-}" "${_sr:-}" "${route_list}" "parallel-routed" || true
   fi
   log "parallel mode: $route_list"
   log_event "$state_dir" "PARALLEL_CALL chain=$route_list"
@@ -686,6 +708,15 @@ run_full_mode() {
     plan_agent="opencode"; plan_model="glm-5.2"
     impl_agent="agy"; impl_model="gemini-3.5-flash"
     review_agent="codex"; review_model="gpt-5.6-sol"
+  fi
+
+  if type ssot_shadow_observe &>/dev/null; then
+    local _sj _si _sr _fc
+    _sj="$("$LIB_DIR/routing-parser.sh" judge "$task_md" 2>/dev/null || true)"
+    _si="$(printf '%s' "$_sj" | grep '^intent=' | cut -d= -f2)"
+    _sr="$(printf '%s' "$_sj" | grep '^reason=' | cut -d= -f2- | sed -n 's/.*route:\([^;]*\).*/\1/p')"
+    _fc="${plan_agent}:${plan_model},${impl_agent}:${impl_model},${review_agent}:${review_model}"
+    ssot_shadow_observe "${_si:-}" "${_sr:-}" "${_fc}" "full-routed" || true
   fi
 
   local round=1
@@ -1014,6 +1045,7 @@ cmd_run() {
           ;;
       esac
     fi
+    ssot_shadow_observe "${intent:-}" "$(printf '%s' "${reason:-}" | sed -n 's/.*route:\([^;]*\).*/\1/p')" "${effective_route:-}" "dry-run" || true
     local slug
     slug="$(task_to_slug "$task_md")"
     local rh

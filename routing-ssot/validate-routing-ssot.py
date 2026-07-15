@@ -181,6 +181,10 @@ def main() -> None:
     print(f"models={len(models)} routes={len(routes)}")
     print(f"sha256={digest}")
 
+    json_path = args.ssot.parent / "routing-ssot.json"
+    json_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"json_dump={json_path}")
+
 
 if __name__ == "__main__":
     main()
