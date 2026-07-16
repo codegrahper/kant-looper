@@ -7,6 +7,10 @@
 
 # kant-looper의 "최종 폴백"이자 "사용자가 명시적으로 claude 호출" 케이스용.
 # 이 어댑터가 마지막 폴백이므로 실패 시 더 이상 fallback 없음.
+#
+# claude는 구독 로그인(OAuth) 상태 그대로 호출. MiniMax의 Anthropic-호환
+# 엔드포인트(ANTHROPIC_AUTH_TOKEN/ANTHROPIC_BASE_URL)는 사용하지 않으며,
+# model="default"이면 --model 플래그를 붙이지 않아 CLI 기본 모델을 그대로 쓴다.
 
 set -Eeuo pipefail
 

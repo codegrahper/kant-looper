@@ -54,7 +54,7 @@ agents:
 
   - name: claude
     role: 최종 폴백 + self-call
-    models: [MiniMax-M3]
+    models: [default]
 
 safety:
   auto_push: false
@@ -69,7 +69,7 @@ safety:
 promote_subcommand: "scripts/kant-loop.sh promote BRANCH --target TARGET"
 promote_required_user_action: true
 
-fallback_chain_final: claude:MiniMax-M3
+fallback_chain_final: claude:default
 
 documentation:
   - SKILL.md

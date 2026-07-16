@@ -13,7 +13,7 @@ fallback_chains:
     fallback_1: openai/gpt-5.6-terra   # 더 가벼움
     fallback_2: zai/glm-5.2            # 다른 공급자
     fallback_3: xai/grok-4.5           # 다른 공급자
-    final: anthropic/MiniMax-M3         # claude subagent
+    final: claude:default               # claude 구독 로그인, --model 미지정
     on_429: wait 30s + other_provider
     on_401: immediate other_provider
     on_timeout: lighter_same_provider
@@ -22,22 +22,22 @@ fallback_chains:
     primary: xai/grok-4.5
     fallback_1: openai/gpt-5.6-terra   # 다른 공급자
     fallback_2: zai/glm-5.2
-    final: anthropic/MiniMax-M3
+    final: claude:default
 
   opencode:
     primary: zai/glm-5.2
     fallback_1: zai/glm-4.7            # 같은 공급자, 더 가벼움
     fallback_2: openai/gpt-5.6-terra
-    final: anthropic/MiniMax-M3
+    final: claude:default
 
   agy:
     primary: google/gemini-3.5-flash
     fallback_1: google/gemini-3.1-pro-preview  # 같은 공급자, 더 강함
     fallback_2: zai/glm-5.2
-    final: anthropic/MiniMax-M3
+    final: claude:default
 
   claude:
-    primary: anthropic/MiniMax-M3 (subagent)
+    primary: claude:default (구독 로그인)
     fallback: null  # 마지막 폴백
 ```
 
@@ -111,7 +111,7 @@ tool_to_default_model:
   opencode: zai/glm-5.2
   opencode_quick: zai/glm-4.7        # T1 작업 시
   agy: google/gemini-3.5-flash       # Antigravity default
-  claude: minimax/MiniMax-M3          # claude subagent
+  claude: default                    # claude 구독 로그인, --model 미지정
 ```
 
 ## TASK 키워드 → 라우트 매핑 (auto_route)

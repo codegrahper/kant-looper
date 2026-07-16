@@ -80,7 +80,7 @@ agy는 `--sandbox`/`--add-dir`/`--dangerously-skip-permissions`의 실제 동작
 ### claude (subagent)
 
 ```
-primary:    MiniMax-M3 (subagent)
+primary:    claude:default (구독 로그인, --model 미지정)
 fallback_1: 없음 (claude가 마지막 폴백)
 ```
 

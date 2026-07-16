@@ -53,8 +53,9 @@ health_check_tool() {
     claude)
       command -v claude >/dev/null 2>&1 || return 1
       claude --version >/dev/null 2>&1 || return 1
-      # 인증 확인
-      [ -f "${HOME}/.claude/credentials.json" ] || [ -n "${ANTHROPIC_API_KEY:-}" ] || return 1
+      # 인증은 claude CLI 자체에 위임. credentials.json/AP 키 부재가
+      # UNAVAILABLE을 유발하면 모든 fallback chain의 최종 안전망이
+      # 무력화되므로, 실제 인증 실패는 호출 시점에서 감지한다.
       return 0
       ;;
 
