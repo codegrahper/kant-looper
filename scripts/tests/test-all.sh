@@ -30,6 +30,7 @@ TESTS=(
   "bash scripts/tests/test-routing-source-ssot.sh"
   "bash scripts/tests/test-routing-ssot-sync.sh"
   "bash scripts/tests/test-await.sh"
+  "bash scripts/tests/test-self-improvement.sh"
 )
 
 LABELS=(
@@ -50,6 +51,7 @@ LABELS=(
   "routing-source-ssot (Phase 4 토글)"
   "routing-ssot-sync (Phase 5 hardcode↔SSOT drift 감지)"
   "await 서브커맨드 (--detach 완료 블로킹 대기)"
+  "self-improvement scan/dispatch safety"
 )
 
 # e2e 테스트는 격리 환경 의존성 (full SKILL) — 경고만 표시

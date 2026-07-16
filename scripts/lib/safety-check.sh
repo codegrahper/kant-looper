@@ -11,7 +11,7 @@ set -Eeuo pipefail
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # 기본 PROTECTED_PATHS
-DEFAULT_PROTECTED_PATHS='.git .env .env.local .env.*.local *.pem *.key *credential* *secret* *password* node_modules dist build __pycache__ .venv'
+DEFAULT_PROTECTED_PATHS='.git .env .env.local .env.*.local *.pem *.key *credential* *secret* *password* node_modules dist build __pycache__ .venv scripts/lib/safety-check.sh scripts/lib/health-check.sh'
 
 # 주의: 각 패턴이 공백을 포함할 수 있으므로(예: "-----BEGIN .* PRIVATE KEY-----")
 # 반드시 줄바꿈으로만 구분한다. 공백으로 나누면 셸이 단어를 쪼개고,

@@ -3,6 +3,8 @@
 #
 # 서브커맨드:
 #   preflight TASK.md                          환경 검사 (side-effect 없음)
+#   self-scan                                  자기개선 백로그 조회 (side-effect 없음)
+#   self-dispatch ID [--quick|--full]          자기개선 TASK 생성 + run 호출
 #   run TASK.md [--quick|--parallel|--full]    모드 디스패치 (기본 = --full)
 #        [--dry-run] [--strict-verify] [--no-auto-commit] [--detach]
 #   status --latest | RUN_ID                   실행 상태
@@ -61,7 +63,9 @@ PROTECTED_PATHS_DEFAULT='.git .env .env.local .env.*.local *.pem *.key *credenti
 PROTECTED_PATHS="${PROTECTED_PATHS:-$PROTECTED_PATHS_DEFAULT}"
 MAX_FILE_BYTES="${KANT_MAX_FILE_BYTES:-10485760}"
 
-mkdir -p "$STATE_ROOT"
+if [ "${1:-}" != "self-scan" ]; then
+  mkdir -p "$STATE_ROOT"
+fi
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -927,6 +931,261 @@ EOF
   return 0
 }
 
+self_scan_records() {
+  local scan_id=0
+  local test_output=""
+
+  if test_output="$(cd "$SKILL_ROOT" && bash scripts/tests/test-all.sh 2>&1)"; then
+    :
+  fi
+
+  local failure label source_line
+  while IFS= read -r failure; do
+    [ -z "$failure" ] && continue
+    label="$(printf '%s' "$failure" | sed -E 's/ \([0-9]+ failures\)$//')"
+    source_line="$(grep -nF "\"$label\"" "$SKILL_ROOT/scripts/tests/test-all.sh" 2>/dev/null | head -1 | cut -d: -f1)"
+    scan_id=$((scan_id + 1))
+    printf 'SCAN-%s\t%s:%s\t%s\n' "$scan_id" "scripts/tests/test-all.sh" "${source_line:-1}" "테스트 실패: $failure"
+  done <<EOF
+$(printf '%s\n' "$test_output" | sed -n 's/^[[:space:]]*✗[[:space:]]*FAIL:[[:space:]]*//p')
+EOF
+
+  local postmortem record line description
+  for postmortem in "$REFERENCES_DIR"/postmortems/*.md; do
+    [ -f "$postmortem" ] || continue
+    while IFS=$'\t' read -r line description; do
+      [ -z "$line" ] && continue
+      scan_id=$((scan_id + 1))
+      printf 'SCAN-%s\t%s:%s\t%s (확인 필요: 완료 여부 자동 판정 없음)\n' \
+        "$scan_id" "${postmortem#$SKILL_ROOT/}" "$line" "$description"
+    done <<EOF
+$(awk '
+  function emit() {
+    if (item_line > 0) {
+      gsub(/[[:space:]]+/, " ", item)
+      sub(/^ /, "", item)
+      sub(/ $/, "", item)
+      printf "%d\t%s\n", item_line, item
+    }
+    item_line = 0
+    item = ""
+  }
+  /^## / {
+    emit()
+    in_candidates = ($0 ~ /후속 조치 후보/)
+    next
+  }
+  in_candidates && /^- \[ \] / {
+    emit()
+    item_line = NR
+    item = $0
+    sub(/^- \[ \] /, "", item)
+    next
+  }
+  in_candidates && item_line > 0 && /^[[:space:]]+/ {
+    continuation = $0
+    sub(/^[[:space:]]+/, "", continuation)
+    item = item " " continuation
+    next
+  }
+  in_candidates && /^- / { emit(); next }
+  END { emit() }
+' "$postmortem")
+EOF
+  done
+}
+
+cmd_self_scan() {
+  local id source description
+  while IFS=$'\t' read -r id source description; do
+    [ -z "$id" ] && continue
+    printf '[%s] source=%s\n' "$id" "$source"
+    printf '  %s\n' "$description"
+  done <<EOF
+$(self_scan_records)
+EOF
+}
+
+extract_protected_function() {
+  local function_name="$1"
+  awk -v signature="^${function_name}\\(\\)" '
+    $0 ~ signature { active = 1 }
+    active { print }
+    active && /^}$/ { exit }
+  '
+}
+
+extract_do_commit_branch_guard() {
+  extract_protected_function "do_commit" | awk '
+    /local current_branch/ { active = 1 }
+    active { print }
+    active && /^[[:space:]]*fi$/ { exit }
+  '
+}
+
+self_dispatch_has_protected_function_changes() {
+  local base_sha="$1" branch="$2" worktree="$3"
+  local base_script branch_script worktree_script
+  base_script="$(git show "$base_sha:scripts/kant-loop.sh" 2>/dev/null || true)"
+  branch_script="$(git show "$branch:scripts/kant-loop.sh" 2>/dev/null || true)"
+  worktree_script=""
+  if [ -f "$worktree/scripts/kant-loop.sh" ]; then
+    worktree_script="$(cat "$worktree/scripts/kant-loop.sh")"
+  fi
+
+  local base_promote base_guard candidate_promote candidate_guard
+  base_promote="$(printf '%s\n' "$base_script" | extract_protected_function "cmd_promote")"
+  base_guard="$(printf '%s\n' "$base_script" | extract_do_commit_branch_guard)"
+
+  candidate_promote="$(printf '%s\n' "$branch_script" | extract_protected_function "cmd_promote")"
+  candidate_guard="$(printf '%s\n' "$branch_script" | extract_do_commit_branch_guard)"
+  if [ "$base_promote" != "$candidate_promote" ] || [ "$base_guard" != "$candidate_guard" ]; then
+    return 0
+  fi
+
+  if [ -n "$worktree_script" ]; then
+    candidate_promote="$(printf '%s\n' "$worktree_script" | extract_protected_function "cmd_promote")"
+    candidate_guard="$(printf '%s\n' "$worktree_script" | extract_do_commit_branch_guard)"
+    if [ "$base_promote" != "$candidate_promote" ] || [ "$base_guard" != "$candidate_guard" ]; then
+      return 0
+    fi
+  fi
+  return 1
+}
+
+cmd_self_dispatch() {
+  local backlog_id="${1:-}"
+  local mode="quick"
+  local tool=""
+  local model=""
+
+  if [ -z "$backlog_id" ]; then
+    echo "usage: kant-loop.sh self-dispatch BACKLOG_ID [--quick|--full] [--agent TOOL] [--model MODEL]" >&2
+    exit 1
+  fi
+  shift
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --quick) mode="quick" ;;
+      --full) mode="full" ;;
+      --agent)
+        [ $# -ge 2 ] || { echo "--agent requires a value" >&2; exit 1; }
+        tool="$2"; shift
+        ;;
+      --model)
+        [ $# -ge 2 ] || { echo "--model requires a value" >&2; exit 1; }
+        model="$2"; shift
+        ;;
+      -*) echo "unknown flag: $1" >&2; exit 1 ;;
+      *) echo "unexpected argument: $1" >&2; exit 1 ;;
+    esac
+    shift
+  done
+
+  local record source description
+  record="$(self_scan_records | awk -F '\t' -v wanted="$backlog_id" '$1 == wanted { print }')"
+  if [ -z "$record" ]; then
+    echo "ERROR: backlog ID not found: $backlog_id" >&2
+    exit 1
+  fi
+  source="$(printf '%s' "$record" | cut -f2)"
+  description="$(printf '%s' "$record" | cut -f3-)"
+
+  local task_dir task_md
+  task_dir="$STATE_ROOT/self-dispatch-tasks"
+  mkdir -p "$task_dir"
+  task_md="$task_dir/${backlog_id}-$(date -u +%Y%m%d-%H%M%S)-TASK.md"
+  cat > "$task_md" <<EOF
+# Kant-Looper 자기개선: $backlog_id
+
+## 목표
+
+$description
+
+## 작업 내용
+
+- 백로그 항목을 조사하고 가장 작은 올바른 변경으로 해결한다.
+- 출처: \`$source\`
+- 이미 완료된 항목으로 확인되면 코드를 변경하지 말고 근거와 함께 BLOCKED로 보고한다.
+
+## 수정 범위
+
+- 위 백로그 항목을 해결하는 데 직접 필요한 파일만 수정한다.
+- 작업 범위 밖 정리나 리팩터링은 하지 않는다.
+
+## 유지 조건 (자기개선 자동화 — 항상 적용)
+
+- 다음 파일은 어떤 이유로도 절대 수정하지 않는다:
+  - \`scripts/lib/safety-check.sh\`
+  - \`scripts/lib/health-check.sh\`
+- \`scripts/kant-loop.sh\`를 수정해야 하는 작업이더라도, 다음 함수는 절대
+  수정하지 않는다:
+  - \`do_commit()\` 중 main/master 브랜치 가드 부분
+  - \`cmd_promote()\` 전체
+- 위 제약이 이번 작업의 목표와 충돌한다면, 작업을 진행하지 말고 이유를
+  verdict의 \`risks\` 필드에 명시한 뒤 BLOCKED로 보고한다.
+- Kant-Looper 안전 5원칙(자동 push 금지, main 직접 커밋 금지, rebase/
+  reset --hard 금지, protected paths 변경 금지, 작업 범위 밖 변경 금지)을
+  그대로 따른다.
+
+## 검증
+
+- 변경 파일의 구문 검사와 관련 회귀 테스트를 실행한다.
+- \`bash scripts/tests/test-all.sh\`를 실행하고 결과를 보고한다.
+
+## 완료 조건
+
+- 백로그 항목이 재현 가능한 근거와 함께 해결된다.
+- 관련 검증과 전체 회귀 테스트가 통과한다.
+- 결과는 작업 브랜치에만 커밋되며 main 병합이나 push는 수행하지 않는다.
+EOF
+
+  echo "generated_task: $task_md"
+
+  local base_sha run_output run_rc=0
+  base_sha="$(git rev-parse HEAD)"
+  run_output="$(mktemp "${TMPDIR:-/tmp}/kant-self-dispatch-output.XXXXXX")"
+  local run_args=(run "$task_md" "--$mode")
+  [ -n "$tool" ] && run_args+=(--agent "$tool")
+  [ -n "$model" ] && run_args+=(--model "$model")
+
+  set +e
+  "$SKILL_ROOT/scripts/kant-loop.sh" "${run_args[@]}" 2>&1 | tee "$run_output"
+  run_rc=${PIPESTATUS[0]}
+  set -e
+
+  local run_id rh state_dir branch worktree verdict
+  run_id="$(sed -n 's/.*run_id[=:][[:space:]]*//p' "$run_output" | tail -1)"
+  rh="$(repo_hash)"
+  state_dir="$STATE_ROOT/$rh/$run_id"
+  branch="$(cat "$state_dir/branch.txt" 2>/dev/null || true)"
+  worktree="$(cat "$state_dir/worktree.txt" 2>/dev/null || true)"
+  verdict="$(cat "$state_dir/failure-code.txt" 2>/dev/null || true)"
+  [ -n "$verdict" ] || verdict="$(grep -Eo 'verdict=[A-Z_]+' "$state_dir/phase-events.log" 2>/dev/null | tail -1 | cut -d= -f2 || true)"
+  [ -n "$verdict" ] || { [ "$run_rc" = "0" ] && verdict="PASS" || verdict="UNKNOWN"; }
+
+  if [ -n "$branch" ] && self_dispatch_has_protected_function_changes "$base_sha" "$branch" "$worktree"; then
+    verdict="SELF_IMPROVEMENT_VIOLATION"
+    printf '%s' "$verdict" > "$state_dir/failure-code.txt"
+    printf '%s' "cmd_promote() 또는 do_commit() main/master 브랜치 가드 변경 감지" > "$state_dir/failure-message.txt"
+    printf '%s\n' "failed" > "$state_dir/result.txt"
+    echo "ERROR: SELF_IMPROVEMENT_VIOLATION — cmd_promote() 또는 do_commit() main/master 브랜치 가드가 변경되었습니다." >&2
+    echo "WARNING: 만들어진 커밋은 자동으로 되돌리지 않았습니다. 사람이 결과 브랜치를 검토해야 합니다." >&2
+    echo "run_id: $run_id"
+    echo "branch: $branch"
+    echo "verdict: $verdict"
+    rm -f "$run_output"
+    exit 1
+  fi
+
+  echo "run_id: $run_id"
+  echo "branch: $branch"
+  echo "verdict: $verdict"
+  rm -f "$run_output"
+  exit "$run_rc"
+}
+
 # ---------------------------------------------------------------------------
 # 서브커맨드: preflight
 # ---------------------------------------------------------------------------
@@ -1557,6 +1816,14 @@ EOF
 # ---------------------------------------------------------------------------
 
 case "${1:-}" in
+  self-scan)
+    shift
+    cmd_self_scan "$@"
+    ;;
+  self-dispatch)
+    shift
+    cmd_self_dispatch "$@"
+    ;;
   preflight)
     shift
     cmd_preflight "$@"
@@ -1599,6 +1866,9 @@ kant-loop.sh — kant-looper 메인 백엔드
 
 서브커맨드:
   preflight [TASK.md]                환경 검사 (사이드 이펙트 없음)
+  self-scan                          자기개선 백로그 조회 (사이드 이펙트 없음)
+  self-dispatch ID [--quick|--full]  TASK 생성 후 run 호출 (기본 = --quick)
+                                     --agent TOOL, --model MODEL
   run TASK.md [--quick|--parallel|--full] [options]
                                      작업 실행 (기본 = --full)
                                      --dry-run, --strict-verify, --no-auto-commit, --detach
