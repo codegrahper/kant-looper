@@ -2,8 +2,8 @@
 # SSOT Shadow Mode Observer - 라우팅 결정을 비침해 기록하는 모듈
 # 기본적으로 비활성 (KANT_SHADOW_MODE=on 활성화)
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SSOT_LOADER="${SCRIPT_DIR}/ssot_loader.py"
+SSOT_SHADOW_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SSOT_LOADER="${SSOT_SHADOW_DIR}/ssot_loader.py"
 
 # 샌드박스 환경 체크
 function ssot_shadow_check_env() {
@@ -18,7 +18,7 @@ function ssot_shadow_check_env() {
     fi
 
     # SSOT 파일 체크
-    if [[ ! -f "${SCRIPT_DIR}/../../routing-ssot/routing-ssot.yaml" ]]; then
+    if [[ ! -f "${SSOT_SHADOW_DIR}/../../routing-ssot/routing-ssot.yaml" ]]; then
         return 1  # SSOT 파일 없으면 비활성
     fi
 
