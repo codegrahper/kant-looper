@@ -396,7 +396,7 @@ run_quick_mode() {
   if [ -z "$tool" ] && [ -z "$model" ]; then
     if [ "$AUTO_ROUTE" = "1" ]; then
       local route
-      route="$("$LIB_DIR/routing-parser.sh" match "$task_md")"
+      route="$("$LIB_DIR/routing-parser.sh" match "$task_md" | grep '^effective_route=' | cut -d= -f2)"
       tool="${route%%:*}"
       model="${route#*:}"
     else
@@ -407,7 +407,7 @@ run_quick_mode() {
     # --model만 지정된 경우
     if [ "$AUTO_ROUTE" = "1" ]; then
       local route
-      route="$("$LIB_DIR/routing-parser.sh" match "$task_md")"
+      route="$("$LIB_DIR/routing-parser.sh" match "$task_md" | grep '^effective_route=' | cut -d= -f2)"
       tool="${route%%:*}"
       model="${model:-${route#*:}}"
     else
