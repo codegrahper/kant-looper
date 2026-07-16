@@ -525,9 +525,31 @@ kant-loop.sh run TASK.md --detach
 # → run_id + state-dir 즉시 반환
 # → 완료 시 macOS notification
 
+# 백그라운드 실행 + 하네스 자동 완료 알림 패턴 (Claude Code 등)
+#   --detach는 사람에게 macOS 알림을 줄 뿐, 에이전트 하네스는
+#   자신이 실행한 명령이 끝날 때만 완료를 안다. 다음 조합을 쓰면
+#   하네스 측 자동 알림을 받을 수 있다:
+#
+#   kant-loop.sh run TASK.md --quick --agent codex --model gpt-5.6-luna --detach
+#   # → run_id 반환 즉시
+#
+#   kant-loop.sh await <run_id>
+#   # → 이 명령 자체를 하네스의 백그라운드 실행(Claude Code Bash 도구
+#   #   run_in_background: true)으로 감싸면, 완료 시 하네스가 자동으로
+#   #   알려준다. macOS 알림(--detach 자체가 주는)과는 별개 경로.
+#
+#   kant-loop.sh await <run_id> --timeout 3600 --interval 5
+#   # → run-id의 result.txt가 완료 값을 쓸 때까지 블로킹 폴링.
+#   #   완료 시 status 요약 출력. 성공(completed/pass_no_commit)=0,
+#   #   실패(failed)=1, 타임아웃=2 종료 코드.
+
 # 상태 확인
 kant-loop.sh status --latest
 kant-loop.sh status <run-id>
+
+# 블로킹 완료 대기 (--detach로 던진 run-id의 완료를 기다림)
+kant-loop.sh await <run-id>
+kant-loop.sh await <run-id> --timeout 3600 --interval 5
 
 # 보고서
 kant-loop.sh report <run-id>

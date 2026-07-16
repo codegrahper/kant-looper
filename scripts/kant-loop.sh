@@ -6,6 +6,7 @@
 #   run TASK.md [--quick|--parallel|--full]    모드 디스패치 (기본 = --full)
 #        [--dry-run] [--strict-verify] [--no-auto-commit] [--detach]
 #   status --latest | RUN_ID                   실행 상태
+#   await RUN_ID [--timeout N] [--interval N]  완료 블로킹 대기
 #   report RUN_ID                              사용자 보고용 markdown 생성
 #   promote BRANCH --target TARGET             사용자 명시 실행 (ff-only merge)
 #   cleanup [--apply]                          dry-run 기본
@@ -1459,6 +1460,99 @@ cmd_update_guide() {
 }
 
 # ---------------------------------------------------------------------------
+# 서브커맨드: await (블로킹 완료 대기 — 하네스 자동 알림 연동)
+# ---------------------------------------------------------------------------
+
+cmd_await() {
+  local target=""
+
+  local timeout=3600
+  local interval=5
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --timeout)
+        [ $# -ge 2 ] || { echo "ERROR: --timeout requires value" >&2; exit 1; }
+        timeout="$2"
+        shift 2
+        ;;
+      --interval)
+        [ $# -ge 2 ] || { echo "ERROR: --interval requires value" >&2; exit 1; }
+        interval="$2"
+        shift 2
+        ;;
+      -h|--help)
+        cat <<EOF
+usage: kant-loop.sh await RUN_ID [--timeout SECONDS] [--interval SECONDS]
+
+블로킹 대기: run-id의 result.txt가 완료 값을 쓸 때까지 폴링.
+완료 시 status 요약을 출력하고 종료.
+
+옵션:
+  --timeout N    최대 대기 초 (기본 3600)
+  --interval N   폴링 간격 초 (기본 5)
+
+종료 코드:
+  0  성공 (result=completed|pass_no_commit|pass)
+  1  실패 (result=failed 또는 run-id 미존재)
+  2  타임아웃
+EOF
+        exit 0
+        ;;
+      *)
+        if [ -z "$target" ]; then
+          target="$1"
+          shift
+        else
+          echo "ERROR: unknown argument: $1" >&2
+          exit 1
+        fi
+        ;;
+    esac
+  done
+
+  if [ -z "$target" ]; then
+    echo "usage: kant-loop.sh await RUN_ID [--timeout SECONDS] [--interval SECONDS]" >&2
+    exit 1
+  fi
+
+  case "$timeout" in
+    ''|*[!0-9]*) echo "ERROR: --timeout must be a positive integer, got: $timeout" >&2; exit 1 ;;
+  esac
+  case "$interval" in
+    ''|*[!0-9]*) echo "ERROR: --interval must be a positive integer, got: $interval" >&2; exit 1 ;;
+  esac
+  if [ "$timeout" -le 0 ]; then echo "ERROR: --timeout must be > 0" >&2; exit 1; fi
+  if [ "$interval" -le 0 ]; then echo "ERROR: --interval must be > 0" >&2; exit 1; fi
+
+  local rh
+  rh="$(repo_hash)"
+  local state_dir="$STATE_ROOT/$rh/$target"
+  if [ ! -d "$state_dir" ]; then
+    echo "ERROR: run not found: $target" >&2
+    exit 1
+  fi
+
+  local elapsed=0
+  local result=""
+  while [ "$elapsed" -lt "$timeout" ]; do
+    result="$(cat "$state_dir/result.txt" 2>/dev/null || echo "")"
+    if [ -n "$result" ] && [ "$result" != "running" ] && [ "$result" != "unknown" ]; then
+      ( cmd_status "$target" ) 2>&1
+      case "$result" in
+        completed|pass_no_commit|pass) exit 0 ;;
+        failed|*)                      exit 1 ;;
+      esac
+    fi
+    sleep "$interval"
+    elapsed=$((elapsed + interval))
+  done
+
+  echo "TIMEOUT: run-id $target 아직 완료 안 됨 (elapsed=${elapsed}s, timeout=${timeout}s)" >&2
+  exit 2
+}
+
+# ---------------------------------------------------------------------------
 # 메인 dispatch
 # ---------------------------------------------------------------------------
 
@@ -1474,6 +1568,10 @@ case "${1:-}" in
   status)
     shift
     cmd_status "$@"
+    ;;
+  await)
+    shift
+    cmd_await "$@"
     ;;
   report)
     shift
@@ -1506,6 +1604,8 @@ kant-loop.sh — kant-looper 메인 백엔드
                                      --dry-run, --strict-verify, --no-auto-commit, --detach
                                      --agent, --model, --chain
   status --latest | RUN_ID           실행 상태 조회
+  await RUN_ID [--timeout N] [--interval N]
+                                     완료까지 블로킹 대기 (하네스 백그라운드 알림 연동)
   report RUN_ID                      보고서 markdown 생성
   promote BRANCH --target TARGET     사용자 명시 ff-only merge
   cleanup [--apply]                  14일 지난 state 정리 (dry-run 기본)
