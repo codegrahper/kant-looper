@@ -111,6 +111,27 @@
   `adapter-opencode.sh`(shell)를 그대로 유지한다. MCP는 codex처럼 실제로
   정식 배포·연결이 검증되는 후보에 한해서만 채택한다.
 
+### 검증 결과: agy-mcp (Boulea7/agy-mcp) (2026-07-17)
+
+설치·연결은 성공(PyPI v0.1.8, `agy-doctor` healthy, `claude mcp list`에서
+Connected). 도구 스키마도 README와 대체로 일치(`agy`, `agy_start/status/
+read/result/cancel`, `agy_continue`, `agy_doctor`, `agy_install_skill`,
+`agy_purge`, `agy_sessions`). 하지만 실사용 검증에서 **치명적 결함 발견**
+— **탈락**.
+
+- `agy` / `agy_start` 도구의 `cd` 파라미터가 실제로 적용되지 않음.
+  `cd: /Users/drumqube/AGENTS/kant-looper-dev`를 넘겨도 응답 메타데이터의
+  `cwd` 필드에는 그대로 echo되지만, agy 바이너리는 실제로
+  `~/.gemini/antigravity-cli/scratch`(빈 스크래치 디렉토리)에서 실행됨.
+  `pwd`를 직접 실행시켜 재현 확인(동기 호출 1회, 백그라운드 job 1회 모두
+  동일 증상).
+- 칸트 루퍼 어댑터는 항상 지정된 worktree 안에서 읽기/쓰기를 해야 하는데,
+  agy-mcp는 엉뚱한 고정 디렉토리에서 동작하므로 `allow_write=true`
+  테스트는 무의미하다고 판단해 진행하지 않음(잘못된 폴더에 쓰기만 하게 됨).
+- **결정**: agy도 opencode와 같은 이유로 MCP 전환하지 않는다. 기존
+  `adapter-agy.sh`(shell, `--add-dir <worktree>` 방식)를 그대로 유지한다.
+  agy-mcp가 `cd`/워킹 디렉토리 버그를 고치고 재배포하면 그때 재검증한다.
+
 ## 진행 방식 (이바 확정)
 
 - **도그푸딩 중심**: 새 기능을 먼저 만들고 나중에 테스트하는 게 아니라,
@@ -141,6 +162,10 @@
    shell adapter 유지로 결론 (완료, 2026-07-17). MinMax M3 2.7 / GLM 4.7 /
    GLM 5.2 모델 안정성 테스트는 기존 `adapter-opencode.sh` 경로로 계속 진행.
 3. grok, agy MCP 연결·검증 — 실패하면 기존 shell adapter 유지
+   - ✅ agy MCP 검증 완료 → **탈락**(`cd` 파라미터 미적용, 고정 스크래치
+     디렉토리에서 실행됨). `adapter-agy.sh` 유지 (완료, 2026-07-17).
+   - ⏳ grok-mcp(maikunari/grok-mcp) 검증 남음 (npm 미배포, 소스 clone·빌드
+     필요).
 4. omo 도구 호출 방식 조사 → 참고할 패턴 반영
 5. SSOT/자기개선 코드 제거 (`routing-parser.sh`, `ssot-shadow.sh`,
    `routing-ssot/`, self-scan/self-dispatch, 관련 테스트)
