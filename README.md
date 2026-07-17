@@ -1,5 +1,7 @@
 # Kant Looper란 무엇인가
 
+![version](https://img.shields.io/badge/version-v0.5.0-blue)
+
 **Kant Looper는 여러 AI 코딩 에이전트를 지휘해, 계획·구현·검증·수정을 반복 수행하는 Bash 기반 자동화 코딩 오케스트레이터입니다.**
 
 Codex, Claude, Grok, OpenCode, Antigravity 같은 도구를 직접 대체하는 AI 모델이 아니라, 각 도구에 역할과 권한을 나누어 주고 작업 결과를 검사하는 **상위 제어 스크립트**입니다.
