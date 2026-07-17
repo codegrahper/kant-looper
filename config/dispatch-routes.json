@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "workflows": {
+    "static-grok-opencode-codex": {
+      "max_attempts": 2,
+      "steps": [
+        {
+          "id": "implement",
+          "agent": "grok",
+          "model": "grok-4.5",
+          "phase": "implement"
+        },
+        {
+          "id": "review",
+          "agent": "opencode",
+          "model": "glm-5.2",
+          "phase": "review"
+        },
+        {
+          "id": "final",
+          "agent": "codex",
+          "model": "gpt-5.6-sol",
+          "phase": "review"
+        }
+      ]
+    },
+    "agy-ui-test-codex": {
+      "max_attempts": 2,
+      "steps": [
+        {
+          "id": "design",
+          "agent": "agy",
+          "model": "gemini-3.5-flash",
+          "phase": "implement"
+        },
+        {
+          "id": "tests",
+          "agent": "agy",
+          "model": "gemini-3.5-flash",
+          "phase": "implement"
+        },
+        {
+          "id": "final",
+          "agent": "codex",
+          "model": "gpt-5.6-sol",
+          "phase": "review"
+        }
+      ]
+    }
+  }
+}

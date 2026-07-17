@@ -86,6 +86,39 @@ notify_macos() {
   fi
 }
 
+emit_terminal_event() {
+  local state_dir="$1"
+  if [ -n "${KANT_DISPATCH_DB:-}" ]; then
+    "$SCRIPT_DIR/dispatcher/record-completion.sh" "$state_dir" "$KANT_DISPATCH_DB" >> "$state_dir/phase-events.log" 2>&1 || log_event "$state_dir" "DISPATCHER_COMPLETION_FAILED"
+  fi
+  local workflow_id
+  workflow_id="$(cat "$state_dir/event-workflow-id.txt" 2>/dev/null || true)"
+  [ -n "$workflow_id" ] || return 0
+
+  local step_id agent model phase
+  step_id="$(cat "$state_dir/event-step-id.txt" 2>/dev/null || true)"
+  agent="$(cat "$state_dir/event-agent.txt" 2>/dev/null || true)"
+  model="$(cat "$state_dir/event-model.txt" 2>/dev/null || true)"
+  phase="$(cat "$state_dir/event-phase.txt" 2>/dev/null || true)"
+  if [ -z "$step_id" ] || [ -z "$agent" ] || [ -z "$model" ] || [ -z "$phase" ]; then
+    log_event "$state_dir" "EVENT_EMIT_SKIPPED missing workflow metadata"
+    return 0
+  fi
+
+  if "$SCRIPT_DIR/event/emit-event.sh" emit \
+    --state-dir "$state_dir" \
+    --event-root "$STATE_ROOT/events" \
+    --workflow-id "$workflow_id" \
+    --step-id "$step_id" \
+    --agent "$agent" \
+    --model "$model" \
+    --phase "$phase" >> "$state_dir/phase-events.log" 2>&1; then
+    log_event "$state_dir" "EVENT_EMITTED workflow=$workflow_id step=$step_id"
+  else
+    log_event "$state_dir" "EVENT_EMIT_FAILED workflow=$workflow_id step=$step_id"
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # fail_run
 # ---------------------------------------------------------------------------
@@ -99,6 +132,7 @@ fail_run() {
     printf '%s' "$message" > "$state_dir/failure-message.txt"
     echo "failed" > "$state_dir/result.txt"
     log_event "$state_dir" "FAIL $code: $message"
+    emit_terminal_event "$state_dir"
   fi
 
   notify_macos "kant-looper: failed" "$code - $message"
@@ -296,6 +330,7 @@ EOF
 
   echo "completed" > "$state_dir/result.txt"
   log_event "$state_dir" "COMMIT $commit_sha"
+  emit_terminal_event "$state_dir"
 
   notify_macos "kant-looper: completed" "$current_branch @ $commit_sha"
 
@@ -512,6 +547,7 @@ EOF
     return $?
   else
     echo "pass_no_commit" > "$state_dir/result.txt"
+    emit_terminal_event "$state_dir"
     notify_macos "kant-looper: pass_no_commit" "quick mode, $role $tool:$model"
     return 0
   fi
@@ -539,6 +575,7 @@ run_quick_chain() {
     do_commit "$worktree" "$state_dir" "$task_title"
   else
     echo "pass_no_commit" > "$state_dir/result.txt"
+    emit_terminal_event "$state_dir"
   fi
 }
 
@@ -657,6 +694,7 @@ EOF
   fi
 
   echo "pass_no_commit" > "$state_dir/result.txt"
+  emit_terminal_event "$state_dir"
   notify_macos "kant-looper: parallel review passed" "${#pairs[@]} reviewers"
   return 0
 }
@@ -691,6 +729,10 @@ cmd_run() {
   local tool=""
   local model=""
   local agent_chain=""
+  local workflow_id=""
+  local workflow_step=""
+  local role="implement"
+  local existing_worktree=""
 
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -710,6 +752,10 @@ cmd_run() {
       --agent) tool="$2"; shift ;;
       --model) model="$2"; shift ;;
       --chain) agent_chain="$2"; export KANT_AGENT_CHAIN="$2"; shift ;;
+      --workflow) workflow_id="$2"; shift ;;
+      --step) workflow_step="$2"; shift ;;
+      --role) role="$2"; shift ;;
+      --existing-worktree) existing_worktree="$2"; shift ;;
       -h|--help) cmd_run_help; exit 0 ;;
       -*) echo "unknown flag: $1" >&2; exit 1 ;;
       *)
@@ -737,6 +783,16 @@ cmd_run() {
     echo "--parallel 모드는 --chain tool:model,tool:model,... 을 명시해야 합니다." >&2
     exit 1
   fi
+
+  if [ -n "$workflow_id" ] && [ -z "$workflow_step" ]; then
+    echo "--workflow requires --step" >&2
+    exit 1
+  fi
+  if [ -z "$workflow_id" ] && [ -n "$workflow_step" ]; then
+    echo "--step requires --workflow" >&2
+    exit 1
+  fi
+  case "$role" in implement|review|repair) ;; *) echo "invalid role: $role" >&2; exit 1 ;; esac
 
   # --chain 포맷 검증: tool:model,tool:model,...
   if [ -n "$agent_chain" ]; then
@@ -816,6 +872,17 @@ cmd_run() {
   local branch="$BRANCH_PREFIX/$run_id"
   echo "$branch" > "$state_dir/branch.txt"
 
+  if [ -n "$workflow_id" ]; then
+    local event_agent="${tool:-codex}"
+    local event_model="$model"
+    if [ -z "$event_model" ]; then event_model="$(get_default_model "$event_agent")"; fi
+    printf '%s\n' "$workflow_id" > "$state_dir/event-workflow-id.txt"
+    printf '%s\n' "$workflow_step" > "$state_dir/event-step-id.txt"
+    printf '%s\n' "$event_agent" > "$state_dir/event-agent.txt"
+    printf '%s\n' "$event_model" > "$state_dir/event-model.txt"
+    printf '%s\n' "$role" > "$state_dir/event-phase.txt"
+  fi
+
   log "run_id=$run_id"
   log "state_dir=$state_dir"
   log "mode=$mode"
@@ -824,7 +891,13 @@ cmd_run() {
   local repo
   repo="$(pwd)"
   local worktree
-  worktree="$(create_worktree "$repo" "$branch")"
+  if [ -n "$existing_worktree" ]; then
+    worktree="$(cd "$existing_worktree" && pwd -P)" || { fail_run "$state_dir" "WORKTREE_NOT_FOUND" "$existing_worktree"; exit 1; }
+    branch="$(git -C "$worktree" rev-parse --abbrev-ref HEAD)"
+    echo "$branch" > "$state_dir/branch.txt"
+  else
+    worktree="$(create_worktree "$repo" "$branch")"
+  fi
   echo "$worktree" > "$state_dir/worktree.txt"
 
   # worktree 정합성 검증 — 외부 도구가 실제로 격리된 곳에서 실행됨을 실행 전에 보장.
@@ -845,7 +918,7 @@ cmd_run() {
 
   if [ "$detach" = "1" ]; then
     log "detach mode — running in background"
-    nohup "$SCRIPT_DIR/kant-loop.sh" _run_mode "$mode" "$task_md" "$state_dir" "$worktree" "$tool" "$model" "$agent_chain" > "$state_dir/detached.log" 2>&1 &
+    nohup "$SCRIPT_DIR/kant-loop.sh" _run_mode "$mode" "$task_md" "$state_dir" "$worktree" "$tool" "$model" "$agent_chain" "$role" > "$state_dir/detached.log" 2>&1 &
     local detached_pid=$!
     echo "$detached_pid" > "$state_dir/detached.pid"
     echo "run_id: $run_id"
@@ -863,7 +936,7 @@ cmd_run() {
       if [ -n "$agent_chain" ]; then
         run_quick_chain "$task_md" "$state_dir" "$worktree" "$agent_chain"
       else
-        run_quick_mode "$task_md" "$tool" "$model" "$state_dir" "$worktree"
+        run_quick_mode "$task_md" "$tool" "$model" "$state_dir" "$worktree" "$role" "$([ "$role" = review ] && echo 0 || echo 1)"
       fi
       ;;
     parallel)
@@ -900,9 +973,26 @@ kant-loop.sh run TASK.md [--quick|--parallel] [options]
   --detach               백그라운드로 실행
   --agent <tool>         quick 모드에서 사용할 도구 (codex|grok|opencode|agy|claude)
   --model <model>        quick 모드에서 사용할 모델
+  --workflow <id>        완료 이벤트용 등록 workflow ID (반드시 --step과 함께)
+  --step <id>            완료 이벤트용 현재 workflow step ID
+  --role <role>          quick 역할 (implement|review|repair)
+  --existing-worktree D  등록된 기존 worktree 재사용 (Supervisor 전용)
   --chain <chain>        tool:model,tool:model,...
                          (--quick은 implement,review,repair 3개 필수; --parallel은 필수)
 EOF
+}
+
+cmd_workflow() {
+  case "${1:-}" in
+    start)
+      shift
+      exec "$SCRIPT_DIR/event/start-workflow.sh" "$@"
+      ;;
+    *)
+      echo "usage: kant-loop.sh workflow start TASK.md --workflow ID [--workflow-file FILE]" >&2
+      exit 2
+      ;;
+  esac
 }
 
 create_worktree() {
@@ -922,19 +1012,27 @@ create_worktree() {
 }
 
 _run_mode() {
-  local mode="$1" task_md="$2" state_dir="$3" worktree="$4" tool="$5" model="$6" agent_chain="$7"
+  local mode="$1" task_md="$2" state_dir="$3" worktree="$4" tool="$5" model="$6" agent_chain="$7" role="${8:-implement}"
+  local rc=0
   case "$mode" in
     quick)
       if [ -n "$agent_chain" ]; then
-        run_quick_chain "$task_md" "$state_dir" "$worktree" "$agent_chain"
+        run_quick_chain "$task_md" "$state_dir" "$worktree" "$agent_chain" || rc=$?
       else
-        run_quick_mode "$task_md" "$tool" "$model" "$state_dir" "$worktree"
+        run_quick_mode "$task_md" "$tool" "$model" "$state_dir" "$worktree" "$role" "$([ "$role" = review ] && echo 0 || echo 1)" || rc=$?
       fi
       ;;
     parallel)
-      run_parallel_mode "$task_md" "$state_dir" "$worktree" "$agent_chain"
+      run_parallel_mode "$task_md" "$state_dir" "$worktree" "$agent_chain" || rc=$?
+      ;;
+    *)
+      rc=2
       ;;
   esac
+  if [ "$rc" != 0 ] && [ ! -f "$state_dir/result.txt" ]; then
+    fail_run "$state_dir" "UNSUPPORTED_MODE" "detached worker ended without terminal result: mode=$mode" || true
+  fi
+  return "$rc"
 }
 
 # ---------------------------------------------------------------------------
@@ -1295,6 +1393,10 @@ case "${1:-}" in
     shift
     cmd_run "$@"
     ;;
+  workflow)
+    shift
+    cmd_workflow "$@"
+    ;;
   status)
     shift
     cmd_status "$@"
@@ -1333,6 +1435,8 @@ kant-loop.sh — kant-looper 메인 백엔드
                                      작업 실행 (기본 = --quick)
                                      --dry-run, --no-auto-commit, --detach
                                      --agent, --model, --chain
+  workflow start TASK.md --workflow ID
+                                     supervisor + root quick 호출을 자동 시작
   status --latest | RUN_ID           실행 상태 조회
   await RUN_ID [--timeout N] [--interval N]
                                      완료까지 블로킹 대기 (하네스 백그라운드 알림 연동)
