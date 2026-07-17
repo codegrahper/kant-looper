@@ -107,12 +107,22 @@ call() {
       ;;
   esac
 
-  # agy는 --print 모드 + --add-dir + --model + sandbox 옵션
+  # agy는 --print(=-p) 모드 + --add-dir + --model + sandbox 옵션
+  # 주의(2026-07-17 실측, 2겹 함정):
+  #  (1) agy는 --print/-p/--prompt를 "값을 받는 플래그"로 처리한다. 프롬프트를
+  #      맨 뒤 positional 인자로 넘기면 agy가 인식하지 못하고 빈 프롬프트로
+  #      실행되어 엉뚱한 응답(인사/이전 컨텍스트)을 반환한다.
+  #  (2) agy는 인자 순서에 의존한다. `--sandbox`가 `-p`보다 앞에 오면 print
+  #      모드로 진입하지 못하고 /dev/tty를 열려다 실패한다
+  #      ("bubbletea: could not open TTY"). 따라서 `-p "<프롬프트>"`를 반드시
+  #      `--sandbox`보다 앞(여기서는 맨 앞)에 둔다.
+  local prompt_text
+  prompt_text="$(cat "$prompt_file")"
   local cmd=(
     agy
+    -p "$prompt_text"
     --add-dir "$worktree"
     --model "$normalized_model"
-    --print
     --sandbox "$sandbox_mode"
     --mode "$agy_mode"
   )
@@ -125,9 +135,6 @@ call() {
   if [ "$allow_browser" = "0" ] && agy --help 2>&1 | grep -q -- '--no-browser'; then
     cmd+=( --no-browser )
   fi
-
-  # prompt 추가 (마지막)
-  cmd+=( "$(cat "$prompt_file")" )
 
   # stdin을 /dev/null로 (대화형 방지)
   # set -e 안전 패턴 (command substitution 실패 시에도 rc 검출)
@@ -143,21 +150,31 @@ call() {
   local json_text
   json_text="$("$SKILL_LIB/verdict-extractor.sh" extract "$response_file" 2>/dev/null || true)"
 
-  # JSON 추출 실패 시 verdict-tag 폴백
+  # JSON 추출 실패 시: <verdict> 태그 폴백까지 처리하는 process 서브커맨드로
+  # 한 번 더 시도한다(기존 코드는 동일한 extract를 중복 호출하는 죽은 폴백이었음).
+  # process가 verdict|json_path를 만들면 그대로 반환하고, 그래도 못 뽑으면 FAIL
+  # 분류를 반환해 fallback_dispatcher가 다른 도구로 전환하게 한다.
   if [ -z "$json_text" ]; then
-    local tag_verdict
-    tag_verdict=$("$SKILL_LIB/verdict-extractor.sh" extract "$response_file" 2>/dev/null || true)
-    if [ -z "$tag_verdict" ]; then
-      local failure_mode
-      failure_mode=$("$SKILL_LIB/fallback-dispatcher.sh" classify "agy" "$rc" "$(cat "$log_file" 2>/dev/null)")
-      echo "FAIL:${failure_mode:-EXTRACT_FAILED}"
-      return 1
+    local processed
+    processed="$("$SKILL_LIB/verdict-extractor.sh" process "$response_file" "$role" 2>/dev/null || true)"
+    if [ -n "$processed" ] && [[ "$processed" != INVALID_OUTPUT* ]]; then
+      echo "$processed"
+      return 0
     fi
-    json_text="$tag_verdict"
+    local failure_mode
+    failure_mode=$("$SKILL_LIB/fallback-dispatcher.sh" classify "agy" "$rc" "$(cat "$log_file" 2>/dev/null)")
+    echo "FAIL:${failure_mode:-EXTRACT_FAILED}"
+    return 1
   fi
 
+  # validate는 set -Eeuo pipefail 아래에서 실패 시 어댑터를 죽일 수 있으므로
+  # 가드로 감싼다. 빈 값 또는 INVALID_OUTPUT이면 structured FAIL을 반환한다.
   local verdict
-  verdict=$("$SKILL_LIB/verdict-extractor.sh" validate "$json_text")
+  verdict=$("$SKILL_LIB/verdict-extractor.sh" validate "$json_text" 2>/dev/null || true)
+  if [ -z "$verdict" ] || [ "$verdict" = "INVALID_OUTPUT" ]; then
+    echo "FAIL:VALIDATE_FAILED"
+    return 1
+  fi
 
   local json_path="$io_dir/agy-${role}.json"
   printf '%s' "$json_text" > "$json_path"
