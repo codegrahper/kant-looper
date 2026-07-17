@@ -65,7 +65,7 @@ routes:
   tiny:
     primary: openai/gpt-5.6-luna
     fallbacks:
-      - google/gemini-3.1-flash-lite
+      - google/gemini-3.5-flash
       - zai/glm-4.7-flash
       - minimax/MiniMax-M2.7-highspeed
 

@@ -69,29 +69,37 @@ toolPermission (string, default "request-review")
 무시하고 엉뚱한 응답(예: 자기소개, 무관한 상태 보고)을 내는 현상을 여러 번 관찰했다.
 read-only 롤에서 스킵 플래그 자체를 없앤 이후로는 재현되지 않았다.
 
-## 5. 모델 ID — `agy models`의 표시 이름과 `--model` 플래그 값이 다르다
+## 5. 모델 ID — agy 1.1.x부터 `--model` 플래그는 표시 이름만 받는다
 
-`agy models`는 사람이 읽기용 표시 이름을 보여준다:
-
-```
-Gemini 3.5 Flash (Medium/High/Low)
-Gemini 3.1 Pro (Low/High)
-Claude Sonnet 4.6 (Thinking)
-Claude Opus 4.6 (Thinking)
-GPT-OSS 120B (Medium)
-```
-
-하지만 `--model` 플래그에는 이 표시 이름이 아니라 raw ID를 줘야 한다. 확인된 값:
+agy 1.1.x(2026-07 확인, `agy --version` = 1.1.3)에서 `--model` 플래그에 raw ID를
+주면 즉시 거부된다:
 
 ```
-gemini-3.5-flash          (Stable, AGY 기본 코딩/UI/멀티모달)
-gemini-3.1-pro-preview    (Preview, 복잡한 설계/agentic)
+Error: invalid --model "gemini-3.5-flash": model gemini-3.5-flash is not
+recognized as a known model or custom model in settings
+
+Available models:
+  Gemini 3.5 Flash (Medium)
+  Gemini 3.5 Flash (High)
+  Gemini 3.5 Flash (Low)
+  Gemini 3.1 Pro (Low)
+  Gemini 3.1 Pro (High)
+  Claude Sonnet 4.6 (Thinking)
+  Claude Opus 4.6 (Thinking)
+  GPT-OSS 120B (Medium)
 ```
 
-**agy CLI에는 reasoning effort(Low/Medium/High)를 별도로 지정하는 플래그가 없다**
-(`agy --help`에 `--reasoning-effort`류 옵션 없음). `agy models`의 (Low/High) 라벨은
-현재 CLI에서 독립적으로 선택할 방법을 못 찾음 — 모델 자체 기본 effort를 따르는 것으로 보임.
-"Gemini 3.5 Pro"는 존재하지 않는다 (3.5는 Flash만, Pro는 3.1 계열).
+`agy models`가 보여주는 표시 이름(공백 포함)을 그대로 `--model`에 넘겨야 동작한다.
+`gemini-3.1-flash-lite`는 목록에서 사라졌다 — 대체품이 필요하면
+`Gemini 3.5 Flash (Low)`가 가장 가깝다. "Gemini 3.5 Pro"는 존재하지 않는다
+(3.5는 Flash만, Pro는 3.1 계열).
+
+kant-looper 내부 식별자(`model-selector.sh`, `fallback-dispatcher.sh`,
+`kant-loop.sh`에 하드코딩된 `gemini-3.5-flash`, `gemini-3.1-pro-preview` 등)는
+짧고 안정적인 형태 그대로 유지하고, 표시 이름 변환은
+`scripts/adapters/adapter-agy.sh`의 normalization case가 책임진다
+(opencode 어댑터의 provider 정규화 패턴과 동일). 매핑 테이블에 없는
+이름은 WARN 로그 후 raw 값 그대로 시도(어댑터 방어적 폴백).
 
 ## 6. Stitch MCP는 시켜야 쓴다 — 알아서 안 씀
 

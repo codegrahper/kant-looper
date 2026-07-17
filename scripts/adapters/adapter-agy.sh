@@ -82,11 +82,36 @@ call() {
   local allow_browser="${KANT_AGY_ALLOW_BROWSER:-0}"
   local allow_terminal="${KANT_AGY_ALLOW_TERMINAL:-0}"
 
+  local normalized_model="$model"
+  case "$model" in
+    gemini-3.5-flash)
+      normalized_model="Gemini 3.5 Flash (Medium)"
+      ;;
+    gemini-3.5-flash-low|gemini-3.5-flash-lite)
+      normalized_model="Gemini 3.5 Flash (Low)"
+      ;;
+    gemini-3.5-flash-high|gemini-3.5-flash-premium)
+      normalized_model="Gemini 3.5 Flash (High)"
+      ;;
+    gemini-3.1-flash-lite)
+      normalized_model="Gemini 3.5 Flash (Low)"
+      ;;
+    gemini-3.1-pro|gemini-3.1-pro-preview)
+      normalized_model="Gemini 3.1 Pro (High)"
+      ;;
+    gemini-3.1-pro-low)
+      normalized_model="Gemini 3.1 Pro (Low)"
+      ;;
+    *)
+      echo "[adapter-agy] WARN: short model name '$model' not in normalization table — passing as-is (agy may reject it)" >&2
+      ;;
+  esac
+
   # agy는 --print 모드 + --add-dir + --model + sandbox 옵션
   local cmd=(
     agy
     --add-dir "$worktree"
-    --model "$model"
+    --model "$normalized_model"
     --print
     --sandbox "$sandbox_mode"
     --mode "$agy_mode"

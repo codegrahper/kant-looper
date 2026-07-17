@@ -530,13 +530,14 @@ run_parallel_mode() {
 
   local i=0
   local pids=()
+  local role="implement"
   for pair in "${pairs[@]}"; do
     IFS=':' read -ra tm <<< "$pair"
     local tool="${tm[0]}"
     local model="${tm[1]}"
-    local role="implement-$((i+1))"
+    local slice_id=$((i+1))
 
-    local prompt_file="$parallel_dir/prompt-$role.md"
+    local prompt_file="$parallel_dir/prompt-$role-$slice_id.md"
     cat > "$prompt_file" <<EOF
 $(cat "$task_md")
 
@@ -548,21 +549,38 @@ Forbidden: Desktop/, ~/Desktop/, Users/, C:\
 Agents modify only their own workspace. Do not modify other agent folders.
 
 ## 병렬 슬라이스
-이 작업의 일부만 수행하세요. 도구: $tool / 모델: $model / 슬라이스: $((i+1))/${#pairs[@]}
+이 작업의 일부만 수행하세요. 도구: $tool / 모델: $model / 슬라이스: $slice_id/${#pairs[@]}
 
-## 보고 형식
-위 quick 모드와 동일.
+## 보고 형식 (반드시 지킬 것)
+너의 응답은 아래 JSON 객체로 응답한다. JSON 바깥에 다른 텍스트를 절대 붙이지 마라.
+
+{
+  "verdict": "PASS|CHANGES_REQUESTED|BLOCKED|INVALID_OUTPUT",
+  "summary": "string",
+  "findings": [],
+  "changed_files": ["..."],
+  "tests_added_or_updated": ["..."],
+  "risks": ["..."],
+  "notes_for_reviewer": "string"
+}
+
+마지막 줄에 <verdict>{PASS|CHANGES_REQUESTED|BLOCKED}</verdict> 태그도 함께 출력한다.
+
+## 중요: 재시도 루프 방지
+- 도구를 실행(tool call)한 직후에도 반드시 위에 정의한 JSON 포맷으로 응답을 출력해야 한다.
+- 도구 실행 후 응답을 출력하지 않고 끝나지 마라. 반드시 JSON과 <verdict> 태그를 포함한 응답을 작성해야 한다.
+- retry loop(재시도 루프)가 발생하지 않도록, 한 번의 구현 후 즉시 위 포맷으로 응답을 출력한다.
 EOF
 
     (
       local adapter="$ADAPTERS_DIR/adapter-${tool}.sh"
       if [ -x "$adapter" ]; then
         "$adapter" call "$role" "$prompt_file" "$worktree" "$model" \
-          > "$parallel_dir/result-$role.txt" 2>&1
-        echo $? > "$parallel_dir/exit-$role.txt"
+          > "$parallel_dir/result-$role-$slice_id.txt" 2>&1
+        echo $? > "$parallel_dir/exit-$role-$slice_id.txt"
       else
-        echo "ADAPTER_MISSING" > "$parallel_dir/result-$role.txt"
-        echo 1 > "$parallel_dir/exit-$role.txt"
+        echo "ADAPTER_MISSING" > "$parallel_dir/result-$role-$slice_id.txt"
+        echo 1 > "$parallel_dir/exit-$role-$slice_id.txt"
       fi
     ) &
     pids+=($!)
@@ -581,11 +599,11 @@ EOF
     IFS=':' read -ra tm <<< "$pair"
     local tool="${tm[0]}"
     local model="${tm[1]}"
-    local role="implement-$((i+1))"
+    local slice_id=$((i+1))
     local exit_code
-    exit_code="$(cat "$parallel_dir/exit-$role.txt" 2>/dev/null || echo "1")"
+    exit_code="$(cat "$parallel_dir/exit-implement-$slice_id.txt" 2>/dev/null || echo "1")"
     local result
-    result="$(cat "$parallel_dir/result-$role.txt" 2>/dev/null || echo "no output")"
+    result="$(cat "$parallel_dir/result-implement-$slice_id.txt" 2>/dev/null || echo "no output")"
     summary="${summary}${tool}:${model} exit=${exit_code} verdict=${result%%|*}
 "
     if [ "$exit_code" != "0" ]; then
@@ -603,13 +621,13 @@ $summary"
   local all_missing_files=""
   i=0
   for pair in "${pairs[@]}"; do
-    local role="implement-$((i+1))"
+    local slice_id=$((i+1))
     local result
-    result="$(cat "$parallel_dir/result-$role.txt" 2>/dev/null || echo "")"
+    result="$(cat "$parallel_dir/result-implement-$slice_id.txt" 2>/dev/null || echo "")"
     local slice_json_path="${result##*|}"
     local slice_missing
     if ! slice_missing="$(verify_changed_files "$worktree" "$slice_json_path")"; then
-      all_missing_files="${all_missing_files}[$role] ${slice_missing}"
+      all_missing_files="${all_missing_files}[implement-$slice_id] ${slice_missing}"
     fi
     i=$((i+1))
   done
@@ -742,7 +760,9 @@ Examples: calculator.py, DONE.md, codex/, opencode/, grok/, agy/
 Forbidden: Desktop/, ~/Desktop/, Users/, C:\
 Agents modify only their own workspace. Do not modify other agent folders.
 
-## 보고 형식 (implement role)
+## 보고 형식 (반드시 지킬 것)
+너의 응답은 아래 JSON 객체로 응답한다. JSON 바깥에 다른 텍스트를 절대 붙이지 마라.
+
 {
   "verdict": "PASS|CHANGES_REQUESTED|BLOCKED|INVALID_OUTPUT",
   "summary": "string",
@@ -753,9 +773,12 @@ Agents modify only their own workspace. Do not modify other agent folders.
   "notes_for_reviewer": "string"
 }
 
+마지막 줄에 <verdict>{PASS|CHANGES_REQUESTED|BLOCKED}</verdict> 태그도 함께 출력한다.
+
 ## 중요: 재시도 루프 방지
-도구를 실행(tool call)한 직후에도 반드시 위에 정의한 JSON 포맷으로 응답을 출력해야 한다.
-도구 실행 후 응답을 출력하지 않고 끝나지 마라. retry loop가 발생하지 않도록 한 번의 구현 후 즉시 JSON과 <verdict> 태그를 포함한 응답을 작성해야 한다.
+- 도구를 실행(tool call)한 직후에도 반드시 위에 정의한 JSON 포맷으로 응답을 출력해야 한다.
+- 도구 실행 후 응답을 출력하지 않고 끝나지 마라. 반드시 JSON과 <verdict> 태그를 포함한 응답을 작성해야 한다.
+- retry loop(재시도 루프)가 발생하지 않도록, 한 번의 구현 후 즉시 위 포맷으로 응답을 출력한다.
 EOF
 
     local impl_adapter="$ADAPTERS_DIR/adapter-${impl_agent}.sh"

@@ -159,7 +159,12 @@ allowed-tools:
 **Antigravity:**
 - `agy:gemini-3.5-flash` (멀티모달, 브라우저/UI, 빠른 반복)
 - `agy:gemini-3.1-pro-preview` (복잡한 설계, 정밀한 reasoning)
-- `agy:gemini-3.1-flash-lite` (대량 저비용 서브태스크)
+
+`agy` CLI 1.1.x는 `--model` 플래그에 표시 이름(`Gemini 3.5 Flash (Medium)` 등)만 받는다.
+kant-looper는 내부적으로 짧은 ID(`gemini-3.5-flash`)를 그대로 쓰고,
+`scripts/adapters/adapter-agy.sh`가 어댑터 호출 시점에 표시 이름으로 정규화한다.
+`gemini-3.1-flash-lite`는 agy 1.1.x에서 사라졌다. 저비용 서브태스크는
+`gemini-3.5-flash` 한 가지로 충분하다.
 
 **Claude:**
 - Claude uses its own default models
