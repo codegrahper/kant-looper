@@ -51,7 +51,7 @@
   - **Phase 5** (`c703d91`) — hardcode↔SSOT drift 감지 회귀 테스트 4종 추가 (6개 라우트 primary 동기화, fallback chain 동기화, 전체 chain이 claude 안전망으로 끝남, 기본 상태 유지). **하드코딩 제거는 보류** — `PHASE-3-5-PLAN.md`에 "2주 이상 SSOT 모드 운영 + 이바의 명시적 승인" 조건 명시, 자의적 제거는 안전 약속 위반으로 판단해 보수적으로 유보
   - 검증: `test-all.sh` 16/16 PASS, 검증기 `VALID` (models=16, routes=7), 기본 상태·shadow ON·SSOT 토글 전부 클로드가 직접 재현 확인 (hardcode/SSOT 모드 route 완전 일치)
 
-### `fix/claude-subscription-login` → 병합 시 `v0.5.1` 예정 (`Kant-looper-branch` 기준, 병합 대기)
+### `fix/claude-subscription-login` — 병합 완료 (`d2c8dce`로 `Kant-looper-branch`에, 이후 main까지 반영됨. `v0.5.1` 별도 태깅은 안 함 — v0.5.0 범위에 이미 포함)
 
 - **Claude 어댑터를 구독 로그인 방식으로 고정 + MiniMax-M3 잔재 제거** (`cd56f6c`, 담당: OpenCode, 검증: 클로드)
   - 근본 원인: `health-check.sh`의 claude 분기가 `~/.claude/credentials.json` 또는 `ANTHROPIC_API_KEY` 존재를 요구 → OAuth 구독 로그인 상태에서는 둘 다 없어 claude가 항상 `UNAVAILABLE`로 오판, 8개 fallback chain의 최종 안전망이 무력화됨 (`QUICK_CALL_FAILED / INFRA_ERROR exit=201`)
