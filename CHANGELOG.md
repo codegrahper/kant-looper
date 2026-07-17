@@ -9,7 +9,39 @@
 
 ## [Unreleased]
 
+### 경량화 5단계 — SSOT/자기개선 코드 제거 (2026-07-17, 이바 승인)
+
+`PLAN-lightweight-kant-looper.md` 방향 전환에 따라, 아래 `routing-ssot-integration`
+섹션이 설명하는 기능 전체(2주 관찰 시험 포함)를 **되돌리고 제거**했다. 판단은
+셸 스크립트가 아니라 클로드가 그 자리에서 하는 쪽으로 확정.
+
+- **삭제**: `scripts/lib/routing-parser.sh`(834줄), `ssot-shadow.sh`(170줄),
+  `ssot_loader.py`, `routing-ssot/` 디렉토리 전체, 관련 테스트 6종
+  (`test-ssot-stress-simulation.sh`, `test-self-improvement.sh`,
+  `test-ssot-shadow.sh`, `test-routing-source-ssot.sh`,
+  `test-routing-ssot-sync.sh`, `test-meta-aware-routing.sh`),
+  `references/ssot-shadow-mode.md`, `ssot-2WEEK-trial.md`
+- **`kant-loop.sh`**: `self-scan`/`self-dispatch` 서브커맨드와 관련 함수군
+  전부 제거. quick/parallel/full 모드의 `AUTO_ROUTE`·`ssot_shadow_observe`
+  분기 제거 — 기존에 이미 있던 하드코딩 기본값(`codex:gpt-5.6-terra` 등)만
+  남김. `--parallel` 모드는 자동 슬라이싱이 없어졌으므로 `--chain` 명시가
+  필수로 바뀜(생략 시 즉시 에러).
+- **`model-selector.sh`**: `auto` 서브커맨드(routing-parser 의존) 제거,
+  `list-agents`/`list-models`/`validate`/`select`는 유지.
+- **`fallback-dispatcher.sh`**: `KANT_ROUTING_SOURCE=ssot` 분기 제거,
+  하드코딩 fallback chain만 사용.
+- **문서**: SKILL.md의 "자동 선택"/"자동 라우팅" 절을 코드 판정 서술에서
+  "클로드가 판단, 표는 참고용 휴리스틱"으로 재작성. `references/loop-flow.md`,
+  `references/fallback-table.md` 동기화. postmortem
+  (`references/postmortems/2026-07-15-routing-keyword-collision.md`)은
+  역사적 기록으로 보존하고 후기만 추가.
+- **검증**: `test-all.sh`(14개 테스트), `run-scenarios.sh`(A/B/C 시나리오
+  dry-run) 전부 재통과 확인.
+
 ### `routing-ssot-integration` → 병합 시 `v0.5.0` 예정 (main 병합 대기 — 2주 `KANT_ROUTING_SOURCE=ssot` 관찰 + 이바 승인 필요)
+
+> **상태(2026-07-17)**: 위 "경량화 5단계"에서 이 섹션이 설명하는 코드 전체가
+> 제거됐다. 아래는 왜/어떻게 만들어졌는지에 대한 역사적 기록으로 남긴다.
 
 - **SSOT 라우팅 통합 — 5단계** (담당: OpenCode, 검증: 클로드)
   - **Phase 1** (`3842c68`) — `/Users/drumqube/Downloads/kant-looper-routing-ssot-package`를 `routing-ssot/`로 이식, agy 검증 리포트가 지적한 코드 불일치 해소: Anthropic/Claude provider 및 `claude:default` 모델 등록(치명 결함이던 "최종 안전망 누락" 해결), agent-model 바인딩 필드 추가, `review` route 추가, `o3` 등록. models 15→16, routes 6→7

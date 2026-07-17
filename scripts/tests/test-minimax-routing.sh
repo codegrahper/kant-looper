@@ -3,16 +3,13 @@
 #
 # Tests:
 # 1. model-selector.sh: MiniMax models under opencode, not claude
-# 2. routing-parser.sh: is_model_valid for opencode accepts MiniMax
-# 3. routing-parser.sh: is_model_valid for claude rejects MiniMax
-# 4. adapter-opencode.sh: MiniMax normalization to provider/model format
-# 5. adapter-claude.sh: MiniMax models are rejected before Claude is called
+# 2. adapter-opencode.sh: MiniMax normalization to provider/model format
+# 3. adapter-claude.sh: MiniMax models are rejected before Claude is called
 
 set -euo pipefail
 
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL_ROOT="$(cd "$LIB_DIR/../.." && pwd)"
-ROUTING_PARSER="$SKILL_ROOT/scripts/lib/routing-parser.sh"
 MODEL_SELECTOR="$SKILL_ROOT/scripts/lib/model-selector.sh"
 ADAPTER_OPENCODE="$SKILL_ROOT/scripts/adapters/adapter-opencode.sh"
 ADAPTER_CLAUDE="$SKILL_ROOT/scripts/adapters/adapter-claude.sh"
@@ -96,35 +93,7 @@ for model in "${MINIMAX_MODELS[@]}"; do
 done
 
 # ----------------------------------------------------------------------------
-# Test 2: routing-parser.sh — indirect validation via model-selector
-# ----------------------------------------------------------------------------
-
-echo ""
-echo "=== routing-parser.sh validation (indirect) ==="
-echo "(routing-parser.sh exits when sourced, so we test indirectly via model-selector)"
-
-# Indirect test: model-selector list-models reflects correct routing
-# If MiniMax is in opencode list and not in claude list, routing is correct
-for model in "${MINIMAX_MODELS[@]}"; do
-  if echo "$opencode_models" | grep -qx "$model"; then
-    echo "${GREEN}PASS${NC}: routing-parser: $model routeable via opencode"
-    PASSED=$((PASSED + 1))
-  else
-    echo "${RED}FAIL${NC}: routing-parser: $model should be routeable via opencode"
-    FAILED=$((FAILED + 1))
-  fi
-
-  if echo "$claude_models" | grep -qx "$model"; then
-    echo "${RED}FAIL${NC}: routing-parser: $model should NOT be routeable via claude"
-    FAILED=$((FAILED + 1))
-  else
-    echo "${GREEN}PASS${NC}: routing-parser: $model not routeable via claude"
-    PASSED=$((PASSED + 1))
-  fi
-done
-
-# ----------------------------------------------------------------------------
-# Test 3: adapter-opencode.sh — MiniMax model normalization
+# Test 2: adapter-opencode.sh — MiniMax model normalization
 # ----------------------------------------------------------------------------
 
 echo ""
@@ -330,31 +299,6 @@ else
 fi
 
 # ----------------------------------------------------------------------------
-# Test B: Invalid MiniMax models rejected by OpenCode via routing-parser CLI
-# ----------------------------------------------------------------------------
-
-echo ""
-echo "=== Invalid MiniMax models rejected by OpenCode ==="
-
-INVALID_MINIMAX_MODELS=(
-  "MiniMax-M9"
-  "MiniMax-invalid"
-  "MiniMax-M3-preview"
-  "minimax/MiniMax-M9"
-  "custom/MiniMax-invalid"
-)
-
-for model in "${INVALID_MINIMAX_MODELS[@]}"; do
-  if "$ROUTING_PARSER" validate-model opencode "$model" >/dev/null 2>&1; then
-    echo "${RED}FAIL${NC}: opencode must reject unsupported MiniMax model: $model"
-    FAILED=$((FAILED + 1))
-  else
-    echo "${GREEN}PASS${NC}: opencode rejects unsupported MiniMax model: $model"
-    PASSED=$((PASSED + 1))
-  fi
-done
-
-# ----------------------------------------------------------------------------
 # Test C: All provider-qualified MiniMax rejected for Claude
 # ----------------------------------------------------------------------------
 
@@ -434,29 +378,6 @@ else
   echo "${GREEN}PASS${NC}: claude|default found in fallback chains"
   PASSED=$((PASSED + 1))
 fi
-
-# ----------------------------------------------------------------------------
-# Test F: Provider-qualified OpenCode normalization preserved
-# ----------------------------------------------------------------------------
-
-echo ""
-echo "=== Provider-qualified OpenCode normalization preserved ==="
-
-QUALIFIED_OPENCODE_TESTS=(
-  "minimax/MiniMax-M3"
-  "custom-minimax/MiniMax-M2.7"
-  "gateway/MiniMax-M2.7-highspeed"
-)
-
-for qualified_model in "${QUALIFIED_OPENCODE_TESTS[@]}"; do
-  if "$ROUTING_PARSER" validate-model opencode "$qualified_model" >/dev/null 2>&1; then
-    echo "${GREEN}PASS${NC}: opencode accepts provider-qualified $qualified_model"
-    PASSED=$((PASSED + 1))
-  else
-    echo "${RED}FAIL${NC}: opencode should accept provider-qualified $qualified_model"
-    FAILED=$((FAILED + 1))
-  fi
-done
 
 # ----------------------------------------------------------------------------
 # Results

@@ -84,12 +84,12 @@ allowed-tools:
 
 **선택 1: 자동 선택**
 
-자동 선택은 메타 에이전트의 판단 + 기존 라우팅 정책의 조합이다.
+자동 선택은 셸 스크립트의 자동판정이 아니라 **클로드가 그 자리에서 판단**한다
+(판단·위임 원칙). 고정된 라우팅 파서 대신, 아래 절차를 클로드가 직접 수행한다.
 
 자동 선택 프로세스:
 
-1. **주 작업 의도 분류** — 사용자의 작업에서 주 목적을 파악한다.
-   `bash scripts/lib/routing-parser.sh classify-intent TASK.md`로 분류 결과 확인.
+1. **주 작업 의도 파악** — TASK.md 내용을 읽고 클로드가 직접 주 목적을 판단한다.
    - `implement` (구현) — 기본값
    - `test` (테스트 작성)
    - `review` (리뷰/검증/감사)
@@ -100,28 +100,27 @@ allowed-tools:
    - `cli` (터미널/시스템)
    - `research` (조사/분석)
 
-2. **작업 복잡도 추정** — 변경 범위와 영향도를 평가한다.
-   `bash scripts/lib/routing-parser.sh estimate-complexity TASK.md`로 복잡도 확인.
+2. **작업 복잡도 판단** — 변경 범위와 영향도를 클로드가 직접 평가한다.
    - `T0` — 읽기/요약/정형 변환
    - `T1` — 한두 파일/완료 조건 명확
    - `T2` — 여러 파일/일반 설계
    - `T3` — 저장소 전체 영향
    - `T4` — 장기/다중 시스템/1M 컨텍스트
 
-3. **메타 판단 기반 라우팅** — 의도 × 복잡도로 후보 선택:
-   ```bash
-   bash scripts/lib/routing-parser.sh match-with-judgment TASK.md \
-     --intent=<분류된_의도> --complexity=<추정된_복잡도>
-   ```
-   - 주 의도와 보조 키워드가 충돌할 때, 주 의도를 우선한다.
-     예: "인증 로직을 수정하고 테스트를 추가한다" → 주 의도=implement, 키워드=test → `codex:terra` (기존: `codex:luna`)
+3. **도구/모델 선택** — `references/multimodel-coding-agent-routing-guide.md`를
+   참고해서 의도 × 복잡도에 맞는 도구/모델을 클로드가 고른다. 주 의도와 보조
+   키워드가 충돌할 때는 주 의도를 우선한다.
+   예: "인증 로직을 수정하고 테스트를 추가한다" → 주 의도=implement → `codex:terra`
+   (테스트 언급만으로 `codex:luna`를 고르지 않는다)
 
 4. **후보 도구 가용성 확인** — 선택된 도구가 사용 가능한지 health-check로 확인.
-   - 사용 불가 시 기존 `fallback-dispatcher` 체인에서 첫 번째 가용 후보 선택.
+   - 사용 불가 시 `fallback-dispatcher`의 하드코딩 체인에서 첫 번째 가용 후보 선택.
 
 5. **사용자 확인** — 도구와 모델을 사용자에게 보여주고 진행 여부 확인.
 
-이 프로세스는 기존 라우팅 정책(`references/multimodel-coding-agent-routing-guide.md`)을 그대로 따른다. 자동 선택은 라우팅 정책을 대체하지 않고 보조한다.
+이 프로세스는 라우팅 정책(`references/multimodel-coding-agent-routing-guide.md`)을
+참고 자료로 삼아 클로드가 직접 판단한다. 이바가 도구를 명시하면(오버라이드)
+그 지시를 그대로 따르고 이 자동 선택 절차는 건너뛴다.
 
 **선택 2: 직접 선택**
 
@@ -512,8 +511,8 @@ kant-loop.sh run TASK.md --dry-run
 # 가벼움: --quick (단일 호출)
 kant-loop.sh run TASK.md --quick --agent codex --model gpt-5.6-terra
 
-# 동시성: --parallel (UI + 로직 + 검증)
-kant-loop.sh run TASK.md --parallel --auto-route
+# 동시성: --parallel (UI + 로직 + 검증, --chain 필수)
+kant-loop.sh run TASK.md --parallel --chain codex:gpt-5.6-terra,opencode:glm-5.2,agy:gemini-3.5-flash
 
 # 풀: --full (기본, HPRAR)
 kant-loop.sh run TASK.md
@@ -566,14 +565,10 @@ kant-loop.sh cleanup --apply
 
 ### 자동 라우팅 (T0~T4)
 
-판정 규칙의 SSOT는 **코드**다. `scripts/lib/routing-parser.sh`의
-`judge_task_routing()` (lines 248-541), `classify_task_intent()` (lines 568-593),
-`estimate_complexity()` (lines 595-612)가 intent/complexity를 grep 패턴으로 판정한다.
-가이드 문서(`references/multimodel-coding-agent-routing-guide.md`)를 파싱하는 것은
-**모델명만** (`parse_routing_guide`, lines 45-94): gpt-5.6-luna/terra/sol,
-glm-5.2, grok-4.5, gemini-3.5-flash. 가이드의 모델명 갱신 시 KANT_PRIMARY_*
-변수가 자동 반영되고, route 매핑도 따라 바뀐다. intent·complexity 규칙을
-바꾸려면 `routing-parser.sh` 코드를 수정하고 테스트를 함께 고칠 것.
+판정은 코드가 아니라 **클로드**가 한다 (판단·위임 원칙). 아래 표는 클로드가
+참고하는 휴리스틱일 뿐, 어떤 스크립트도 이 표를 파싱해서 강제하지 않는다.
+가이드 문서(`references/multimodel-coding-agent-routing-guide.md`)도 마찬가지로
+참고 자료 — 모델 후보군의 출처이지 자동판정 로직의 입력이 아니다.
 
 | 키워드 | 라우트 |
 |---|---|
@@ -585,11 +580,9 @@ glm-5.2, grok-4.5, gemini-3.5-flash. 가이드의 모델명 갱신 시 KANT_PRIM
 | 1M, huge, large repo | opencode (glm-5.2) |
 | 기본 | codex (gpt-5.6-terra) |
 
-**유지보수 절차**: intent·complexity 규칙을 변경하면 `scripts/lib/routing-parser.sh`의
-해당 함수와 `scripts/tests/test-meta-aware-routing.sh` 테스트를 함께 고칠 것.
-가이드 문서(`references/multimodel-coding-agent-routing-guide.md`)는 모델 정보
-출처이지 판정 규칙 출처가 아니다. 판정 규칙 변경 시 문서 갱신은 선택이며,
-코드+테스트 변경이 우선.
+**유지보수 절차**: 이 표나 가이드 문서의 모델명이 바뀌면 문서만 고치면 된다 —
+동기화해야 할 코드가 없다. 후보 모델 자체(레지스트리)는 이바가 정의·유지하고,
+그 범위 안에서 클로드가 작업마다 판단해서 위임한다.
 
 ### 안전 약속 (절대 위반 안 됨)
 
@@ -649,7 +642,7 @@ main에 합치시려면:
 ├── scripts/
 │   ├── kant-loop.sh                              # 메인 백엔드
 │   ├── adapters/                                 # 5개 어댑터 (codex/grok/opencode/agy/claude)
-│   ├── lib/                                      # 8개 라이브러리 (routing/health/fallback/...)
+│   ├── lib/                                      # 라이브러리 (health/fallback/model-selector/...)
 │   └── tests/                                    # 시나리오 자동 검증
 └── agents/openai.yaml                            # 인터페이스 메타
 ```

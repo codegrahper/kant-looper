@@ -114,9 +114,10 @@ tool_to_default_model:
   claude: default                    # claude 구독 로그인, --model 미지정
 ```
 
-## TASK 키워드 → 라우트 매핑 (auto_route)
+## TASK 키워드 → 라우트 매핑 (참고용 휴리스틱)
 
-`scripts/lib/routing-parser.sh`가 사용하는 휴리스틱:
+클로드가 작업을 판단할 때 참고하는 휴리스틱 — 이 표를 파싱하는 코드는 없다
+(판단은 클로드가 그 자리에서 한다):
 
 ```yaml
 keyword_to_route:

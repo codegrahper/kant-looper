@@ -2,7 +2,6 @@
 # model-selector.sh — 모델 선택 인터페이스
 #
 # 사용법:
-#   model-selector.sh auto TASK.md          # 자동 라우팅
 #   model-selector.sh list-agents          # 사용 가능한 agent 목록
 #   model-selector.sh list-models <agent>  # agent가 지원하는 모델 목록
 #   model-selector.sh validate <tool> <model>  # 모델 유효성 검증
@@ -12,7 +11,6 @@ set -Eeuo pipefail
 
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL_ROOT="$(cd "$LIB_DIR/../.." && pwd)"
-ROUTING_PARSER="$LIB_DIR/routing-parser.sh"
 
 # ---------------------------------------------------------------------------
 # 사용 가능한 agent 목록
@@ -80,31 +78,6 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# 자동 라우팅
-# ---------------------------------------------------------------------------
-# routing-parser.sh를 이용해서 TASK 내용에서 적절한 tool:model 결정
-
-auto_select() {
-  local task_file="$1"
-
-  if [ ! -f "$task_file" ]; then
-    echo "ERROR: task file not found: $task_file" >&2
-    return 1
-  fi
-
-  local result
-  result="$("$ROUTING_PARSER" match "$task_file" 2>/dev/null || true)"
-
-  if [ -z "$result" ]; then
-    # 폴백: 기본값
-    echo "codex:gpt-5.6-terra"
-    return 0
-  fi
-
-  echo "$result"
-}
-
-# ---------------------------------------------------------------------------
 # 모델 유효성 검증
 # ---------------------------------------------------------------------------
 
@@ -153,16 +126,12 @@ usage() {
 model-selector.sh — 모델 선택 인터페이스
 
 사용법:
-  model-selector.sh auto TASK.md          # 자동 라우팅 (routing-parser.sh 사용)
   model-selector.sh list-agents           # 사용 가능한 agent 목록
   model-selector.sh list-models <agent>   # agent가 지원하는 모델 목록
   model-selector.sh validate <tool> <model>  # 모델 유효성 검증
   model-selector.sh select <tool> <model>    # 선택 확정
 
 예시:
-  # 자동 라우팅
-  model-selector.sh auto /tmp/task.md
-
   # agent 목록
   model-selector.sh list-agents
 
@@ -178,10 +147,6 @@ EOF
 }
 
 case "${1:-}" in
-  auto)
-    shift
-    auto_select "$@"
-    ;;
   list-agents)
     list_agents
     ;;

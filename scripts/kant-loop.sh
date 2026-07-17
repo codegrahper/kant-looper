@@ -3,8 +3,6 @@
 #
 # 서브커맨드:
 #   preflight TASK.md                          환경 검사 (side-effect 없음)
-#   self-scan                                  자기개선 백로그 조회 (side-effect 없음)
-#   self-dispatch ID [--quick|--full]          자기개선 TASK 생성 + run 호출
 #   run TASK.md [--quick|--parallel|--full]    모드 디스패치 (기본 = --full)
 #        [--dry-run] [--strict-verify] [--no-auto-commit] [--detach]
 #   status --latest | RUN_ID                   실행 상태
@@ -40,14 +38,6 @@ export KANT_LIB_DIR="$LIB_DIR"
 export KANT_ADAPTERS_DIR="$ADAPTERS_DIR"
 
 # ---------------------------------------------------------------------------
-# Load SSOT shadow observer (Phase 3/5)
-# ---------------------------------------------------------------------------
-
-if [ -f "$LIB_DIR/ssot-shadow.sh" ]; then
-  source "$LIB_DIR/ssot-shadow.sh"
-fi
-
-# ---------------------------------------------------------------------------
 # 기본 환경값
 # ---------------------------------------------------------------------------
 
@@ -55,7 +45,6 @@ STATE_ROOT="${KANT_STATE_ROOT:-$HOME/.claude/state/kant-looper}"
 MAX_ROUNDS="${KANT_MAX_ROUNDS:-2}"
 STRICT_TWO_ROUND_VERIFY="${KANT_STRICT_TWO_ROUND_VERIFY:-0}"
 AUTO_COMMIT="${KANT_AUTO_COMMIT:-1}"
-AUTO_ROUTE="${KANT_AUTO_ROUTE:-1}"
 BRANCH_PREFIX="${KANT_BRANCH_PREFIX:-agent/kant}"
 NOTIFY="${KANT_NOTIFY:-1}"
 NOTIFY_OSASCRIPT="${KANT_NOTIFY_OSASCRIPT:-1}"
@@ -63,9 +52,7 @@ PROTECTED_PATHS_DEFAULT='.git .env .env.local .env.*.local *.pem *.key *credenti
 PROTECTED_PATHS="${PROTECTED_PATHS:-$PROTECTED_PATHS_DEFAULT}"
 MAX_FILE_BYTES="${KANT_MAX_FILE_BYTES:-10485760}"
 
-if [ "${1:-}" != "self-scan" ]; then
-  mkdir -p "$STATE_ROOT"
-fi
+mkdir -p "$STATE_ROOT"
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -394,34 +381,11 @@ run_quick_mode() {
   fi
 
   if [ -z "$tool" ] && [ -z "$model" ]; then
-    if [ "$AUTO_ROUTE" = "1" ]; then
-      local route
-      route="$("$LIB_DIR/routing-parser.sh" match "$task_md" | grep '^effective_route=' | cut -d= -f2)"
-      tool="${route%%:*}"
-      model="${route#*:}"
-    else
-      tool="codex"
-      model="gpt-5.6-terra"
-    fi
+    tool="codex"
+    model="gpt-5.6-terra"
   elif [ -z "$tool" ]; then
     # --model만 지정된 경우
-    if [ "$AUTO_ROUTE" = "1" ]; then
-      local route
-      route="$("$LIB_DIR/routing-parser.sh" match "$task_md" | grep '^effective_route=' | cut -d= -f2)"
-      tool="${route%%:*}"
-      model="${model:-${route#*:}}"
-    else
-      tool="codex"
-      model="${model:-gpt-5.6-terra}"
-    fi
-  fi
-
-  if type ssot_shadow_observe &>/dev/null; then
-    local _sj _si _sr
-    _sj="$("$LIB_DIR/routing-parser.sh" judge "$task_md" 2>/dev/null || true)"
-    _si="$(printf '%s' "$_sj" | grep '^intent=' | cut -d= -f2)"
-    _sr="$(printf '%s' "$_sj" | grep '^reason=' | cut -d= -f2- | sed -n 's/.*route:\([^;]*\).*/\1/p')"
-    ssot_shadow_observe "${_si:-}" "${_sr:-}" "${tool}:${model}" "quick-routed" || true
+    tool="codex"
   fi
 
   if ! validate_agent_model_compatibility "$tool" "$model"; then
@@ -551,19 +515,11 @@ run_parallel_mode() {
   local task_md="$1" state_dir="$2" worktree="$3"
   local agent_chain="${4:-}"
 
-  local route_list
-  if [ -n "$agent_chain" ]; then
-    route_list="$agent_chain"
-  else
-    route_list="$("$LIB_DIR/routing-parser.sh" slice "$task_md")"
+  if [ -z "$agent_chain" ]; then
+    fail_run "$state_dir" "MISSING_CHAIN" "--parallel 모드는 agent_chain이 필요합니다"
+    return 1
   fi
-  if type ssot_shadow_observe &>/dev/null; then
-    local _sj _si _sr
-    _sj="$("$LIB_DIR/routing-parser.sh" judge "$task_md" 2>/dev/null || true)"
-    _si="$(printf '%s' "$_sj" | grep '^intent=' | cut -d= -f2)"
-    _sr="$(printf '%s' "$_sj" | grep '^reason=' | cut -d= -f2- | sed -n 's/.*route:\([^;]*\).*/\1/p')"
-    ssot_shadow_observe "${_si:-}" "${_sr:-}" "${route_list}" "parallel-routed" || true
-  fi
+  local route_list="$agent_chain"
   log "parallel mode: $route_list"
   log_event "$state_dir" "PARALLEL_CALL chain=$route_list"
 
@@ -713,15 +669,6 @@ run_full_mode() {
     plan_agent="opencode"; plan_model="glm-5.2"
     impl_agent="agy"; impl_model="gemini-3.5-flash"
     review_agent="codex"; review_model="gpt-5.6-sol"
-  fi
-
-  if type ssot_shadow_observe &>/dev/null; then
-    local _sj _si _sr _fc
-    _sj="$("$LIB_DIR/routing-parser.sh" judge "$task_md" 2>/dev/null || true)"
-    _si="$(printf '%s' "$_sj" | grep '^intent=' | cut -d= -f2)"
-    _sr="$(printf '%s' "$_sj" | grep '^reason=' | cut -d= -f2- | sed -n 's/.*route:\([^;]*\).*/\1/p')"
-    _fc="${plan_agent}:${plan_model},${impl_agent}:${impl_model},${review_agent}:${review_model}"
-    ssot_shadow_observe "${_si:-}" "${_sr:-}" "${_fc}" "full-routed" || true
   fi
 
   local round=1
@@ -931,261 +878,6 @@ EOF
   return 0
 }
 
-self_scan_records() {
-  local scan_id=0
-  local test_output=""
-
-  if test_output="$(cd "$SKILL_ROOT" && bash scripts/tests/test-all.sh 2>&1)"; then
-    :
-  fi
-
-  local failure label source_line
-  while IFS= read -r failure; do
-    [ -z "$failure" ] && continue
-    label="$(printf '%s' "$failure" | sed -E 's/ \([0-9]+ failures\)$//')"
-    source_line="$(grep -nF "\"$label\"" "$SKILL_ROOT/scripts/tests/test-all.sh" 2>/dev/null | head -1 | cut -d: -f1)"
-    scan_id=$((scan_id + 1))
-    printf 'SCAN-%s\t%s:%s\t%s\n' "$scan_id" "scripts/tests/test-all.sh" "${source_line:-1}" "테스트 실패: $failure"
-  done <<EOF
-$(printf '%s\n' "$test_output" | sed -n 's/^[[:space:]]*✗[[:space:]]*FAIL:[[:space:]]*//p')
-EOF
-
-  local postmortem record line description
-  for postmortem in "$REFERENCES_DIR"/postmortems/*.md; do
-    [ -f "$postmortem" ] || continue
-    while IFS=$'\t' read -r line description; do
-      [ -z "$line" ] && continue
-      scan_id=$((scan_id + 1))
-      printf 'SCAN-%s\t%s:%s\t%s (확인 필요: 완료 여부 자동 판정 없음)\n' \
-        "$scan_id" "${postmortem#$SKILL_ROOT/}" "$line" "$description"
-    done <<EOF
-$(awk '
-  function emit() {
-    if (item_line > 0) {
-      gsub(/[[:space:]]+/, " ", item)
-      sub(/^ /, "", item)
-      sub(/ $/, "", item)
-      printf "%d\t%s\n", item_line, item
-    }
-    item_line = 0
-    item = ""
-  }
-  /^## / {
-    emit()
-    in_candidates = ($0 ~ /후속 조치 후보/)
-    next
-  }
-  in_candidates && /^- \[ \] / {
-    emit()
-    item_line = NR
-    item = $0
-    sub(/^- \[ \] /, "", item)
-    next
-  }
-  in_candidates && item_line > 0 && /^[[:space:]]+/ {
-    continuation = $0
-    sub(/^[[:space:]]+/, "", continuation)
-    item = item " " continuation
-    next
-  }
-  in_candidates && /^- / { emit(); next }
-  END { emit() }
-' "$postmortem")
-EOF
-  done
-}
-
-cmd_self_scan() {
-  local id source description
-  while IFS=$'\t' read -r id source description; do
-    [ -z "$id" ] && continue
-    printf '[%s] source=%s\n' "$id" "$source"
-    printf '  %s\n' "$description"
-  done <<EOF
-$(self_scan_records)
-EOF
-}
-
-extract_protected_function() {
-  local function_name="$1"
-  awk -v signature="^${function_name}\\(\\)" '
-    $0 ~ signature { active = 1 }
-    active { print }
-    active && /^}$/ { exit }
-  '
-}
-
-extract_do_commit_branch_guard() {
-  extract_protected_function "do_commit" | awk '
-    /local current_branch/ { active = 1 }
-    active { print }
-    active && /^[[:space:]]*fi$/ { exit }
-  '
-}
-
-self_dispatch_has_protected_function_changes() {
-  local base_sha="$1" branch="$2" worktree="$3"
-  local base_script branch_script worktree_script
-  base_script="$(git show "$base_sha:scripts/kant-loop.sh" 2>/dev/null || true)"
-  branch_script="$(git show "$branch:scripts/kant-loop.sh" 2>/dev/null || true)"
-  worktree_script=""
-  if [ -f "$worktree/scripts/kant-loop.sh" ]; then
-    worktree_script="$(cat "$worktree/scripts/kant-loop.sh")"
-  fi
-
-  local base_promote base_guard candidate_promote candidate_guard
-  base_promote="$(printf '%s\n' "$base_script" | extract_protected_function "cmd_promote")"
-  base_guard="$(printf '%s\n' "$base_script" | extract_do_commit_branch_guard)"
-
-  candidate_promote="$(printf '%s\n' "$branch_script" | extract_protected_function "cmd_promote")"
-  candidate_guard="$(printf '%s\n' "$branch_script" | extract_do_commit_branch_guard)"
-  if [ "$base_promote" != "$candidate_promote" ] || [ "$base_guard" != "$candidate_guard" ]; then
-    return 0
-  fi
-
-  if [ -n "$worktree_script" ]; then
-    candidate_promote="$(printf '%s\n' "$worktree_script" | extract_protected_function "cmd_promote")"
-    candidate_guard="$(printf '%s\n' "$worktree_script" | extract_do_commit_branch_guard)"
-    if [ "$base_promote" != "$candidate_promote" ] || [ "$base_guard" != "$candidate_guard" ]; then
-      return 0
-    fi
-  fi
-  return 1
-}
-
-cmd_self_dispatch() {
-  local backlog_id="${1:-}"
-  local mode="quick"
-  local tool=""
-  local model=""
-
-  if [ -z "$backlog_id" ]; then
-    echo "usage: kant-loop.sh self-dispatch BACKLOG_ID [--quick|--full] [--agent TOOL] [--model MODEL]" >&2
-    exit 1
-  fi
-  shift
-
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --quick) mode="quick" ;;
-      --full) mode="full" ;;
-      --agent)
-        [ $# -ge 2 ] || { echo "--agent requires a value" >&2; exit 1; }
-        tool="$2"; shift
-        ;;
-      --model)
-        [ $# -ge 2 ] || { echo "--model requires a value" >&2; exit 1; }
-        model="$2"; shift
-        ;;
-      -*) echo "unknown flag: $1" >&2; exit 1 ;;
-      *) echo "unexpected argument: $1" >&2; exit 1 ;;
-    esac
-    shift
-  done
-
-  local record source description
-  record="$(self_scan_records | awk -F '\t' -v wanted="$backlog_id" '$1 == wanted { print }')"
-  if [ -z "$record" ]; then
-    echo "ERROR: backlog ID not found: $backlog_id" >&2
-    exit 1
-  fi
-  source="$(printf '%s' "$record" | cut -f2)"
-  description="$(printf '%s' "$record" | cut -f3-)"
-
-  local task_dir task_md
-  task_dir="$STATE_ROOT/self-dispatch-tasks"
-  mkdir -p "$task_dir"
-  task_md="$task_dir/${backlog_id}-$(date -u +%Y%m%d-%H%M%S)-TASK.md"
-  cat > "$task_md" <<EOF
-# Kant-Looper 자기개선: $backlog_id
-
-## 목표
-
-$description
-
-## 작업 내용
-
-- 백로그 항목을 조사하고 가장 작은 올바른 변경으로 해결한다.
-- 출처: \`$source\`
-- 이미 완료된 항목으로 확인되면 코드를 변경하지 말고 근거와 함께 BLOCKED로 보고한다.
-
-## 수정 범위
-
-- 위 백로그 항목을 해결하는 데 직접 필요한 파일만 수정한다.
-- 작업 범위 밖 정리나 리팩터링은 하지 않는다.
-
-## 유지 조건 (자기개선 자동화 — 항상 적용)
-
-- 다음 파일은 어떤 이유로도 절대 수정하지 않는다:
-  - \`scripts/lib/safety-check.sh\`
-  - \`scripts/lib/health-check.sh\`
-- \`scripts/kant-loop.sh\`를 수정해야 하는 작업이더라도, 다음 함수는 절대
-  수정하지 않는다:
-  - \`do_commit()\` 중 main/master 브랜치 가드 부분
-  - \`cmd_promote()\` 전체
-- 위 제약이 이번 작업의 목표와 충돌한다면, 작업을 진행하지 말고 이유를
-  verdict의 \`risks\` 필드에 명시한 뒤 BLOCKED로 보고한다.
-- Kant-Looper 안전 5원칙(자동 push 금지, main 직접 커밋 금지, rebase/
-  reset --hard 금지, protected paths 변경 금지, 작업 범위 밖 변경 금지)을
-  그대로 따른다.
-
-## 검증
-
-- 변경 파일의 구문 검사와 관련 회귀 테스트를 실행한다.
-- \`bash scripts/tests/test-all.sh\`를 실행하고 결과를 보고한다.
-
-## 완료 조건
-
-- 백로그 항목이 재현 가능한 근거와 함께 해결된다.
-- 관련 검증과 전체 회귀 테스트가 통과한다.
-- 결과는 작업 브랜치에만 커밋되며 main 병합이나 push는 수행하지 않는다.
-EOF
-
-  echo "generated_task: $task_md"
-
-  local base_sha run_output run_rc=0
-  base_sha="$(git rev-parse HEAD)"
-  run_output="$(mktemp "${TMPDIR:-/tmp}/kant-self-dispatch-output.XXXXXX")"
-  local run_args=(run "$task_md" "--$mode")
-  [ -n "$tool" ] && run_args+=(--agent "$tool")
-  [ -n "$model" ] && run_args+=(--model "$model")
-
-  set +e
-  "$SKILL_ROOT/scripts/kant-loop.sh" "${run_args[@]}" 2>&1 | tee "$run_output"
-  run_rc=${PIPESTATUS[0]}
-  set -e
-
-  local run_id rh state_dir branch worktree verdict
-  run_id="$(sed -n 's/.*run_id[=:][[:space:]]*//p' "$run_output" | tail -1)"
-  rh="$(repo_hash)"
-  state_dir="$STATE_ROOT/$rh/$run_id"
-  branch="$(cat "$state_dir/branch.txt" 2>/dev/null || true)"
-  worktree="$(cat "$state_dir/worktree.txt" 2>/dev/null || true)"
-  verdict="$(cat "$state_dir/failure-code.txt" 2>/dev/null || true)"
-  [ -n "$verdict" ] || verdict="$(grep -Eo 'verdict=[A-Z_]+' "$state_dir/phase-events.log" 2>/dev/null | tail -1 | cut -d= -f2 || true)"
-  [ -n "$verdict" ] || { [ "$run_rc" = "0" ] && verdict="PASS" || verdict="UNKNOWN"; }
-
-  if [ -n "$branch" ] && self_dispatch_has_protected_function_changes "$base_sha" "$branch" "$worktree"; then
-    verdict="SELF_IMPROVEMENT_VIOLATION"
-    printf '%s' "$verdict" > "$state_dir/failure-code.txt"
-    printf '%s' "cmd_promote() 또는 do_commit() main/master 브랜치 가드 변경 감지" > "$state_dir/failure-message.txt"
-    printf '%s\n' "failed" > "$state_dir/result.txt"
-    echo "ERROR: SELF_IMPROVEMENT_VIOLATION — cmd_promote() 또는 do_commit() main/master 브랜치 가드가 변경되었습니다." >&2
-    echo "WARNING: 만들어진 커밋은 자동으로 되돌리지 않았습니다. 사람이 결과 브랜치를 검토해야 합니다." >&2
-    echo "run_id: $run_id"
-    echo "branch: $branch"
-    echo "verdict: $verdict"
-    rm -f "$run_output"
-    exit 1
-  fi
-
-  echo "run_id: $run_id"
-  echo "branch: $branch"
-  echo "verdict: $verdict"
-  rm -f "$run_output"
-  exit "$run_rc"
-}
-
 # ---------------------------------------------------------------------------
 # 서브커맨드: preflight
 # ---------------------------------------------------------------------------
@@ -1195,12 +887,8 @@ cmd_preflight() {
 
   log "preflight starting..."
   "$LIB_DIR/health-check.sh" preflight "/tmp/kant-preflight.log"
-  "$LIB_DIR/routing-parser.sh" dump | head -10
   if [ -n "$task_md" ] && [ -f "$task_md" ]; then
     log "task.md: OK ($(wc -l < "$task_md" | tr -d ' ') lines)"
-    local route
-    route="$("$LIB_DIR/routing-parser.sh" match "$task_md")"
-    log "auto-route: $route"
   fi
   log "preflight done"
   exit 0
@@ -1262,6 +950,12 @@ cmd_run() {
     exit 1
   fi
 
+  # parallel 모드는 자동 슬라이싱이 없으므로 --chain 명시 필수
+  if [ "$mode" = "parallel" ] && [ -z "$agent_chain" ]; then
+    echo "--parallel 모드는 --chain tool:model,tool:model,... 을 명시해야 합니다." >&2
+    exit 1
+  fi
+
   # --chain 포맷 검증: tool:model,tool:model,...
   if [ -n "$agent_chain" ]; then
     local chain_invalid=0
@@ -1286,26 +980,22 @@ cmd_run() {
   fi
 
   if [ "$dry_run" = "1" ]; then
-    local judge_output
-    judge_output="$("$LIB_DIR/routing-parser.sh" judge "$task_md")" || true
-    local intent complexity judged_route effective_route fallback_reason reason
-    intent="$(printf '%s' "$judge_output" | grep '^intent=' | cut -d= -f2)"
-    complexity="$(printf '%s' "$judge_output" | grep '^complexity=' | cut -d= -f2)"
-    judged_route="$(printf '%s' "$judge_output" | grep '^judged_route=' | cut -d= -f2)"
-    effective_route="$(printf '%s' "$judge_output" | grep '^effective_route=' | cut -d= -f2)"
-    fallback_reason="$(printf '%s' "$judge_output" | grep '^fallback_reason=' | cut -d= -f2)"
-    reason="$(printf '%s' "$judge_output" | grep '^reason=' | cut -d= -f2)"
+    local effective_route
     if [ -n "$agent_chain" ]; then
+      effective_route="chain:$agent_chain"
+    else
       case "$mode" in
-        full)
-          effective_route="chain:$agent_chain"
+        quick)
+          effective_route="${tool:-codex}:${model:-gpt-5.6-terra}"
           ;;
-        parallel)
-          effective_route="chain:$agent_chain"
+        full)
+          effective_route="chain:opencode:glm-5.2,agy:gemini-3.5-flash,codex:gpt-5.6-sol"
+          ;;
+        *)
+          effective_route="unresolved"
           ;;
       esac
     fi
-    ssot_shadow_observe "${intent:-}" "$(printf '%s' "${reason:-}" | sed -n 's/.*route:\([^;]*\).*/\1/p')" "${effective_route:-}" "dry-run" || true
     local slug
     slug="$(task_to_slug "$task_md")"
     local rh
@@ -1315,13 +1005,8 @@ cmd_run() {
     echo "dry-run:"
     echo "  mode: $mode"
     echo "  task: $task_md"
-    echo "  intent: ${intent:-unknown}"
-    echo "  complexity: ${complexity:-unknown}"
     echo "  agent_chain: ${agent_chain:-}"
-    echo "  judged_route: ${judged_route:-unknown}"
-    echo "  effective_route: ${effective_route:-unresolved-until-health-check}"
-    echo "  fallback_reason: ${fallback_reason:-}"
-    echo "  reason: ${reason:-}"
+    echo "  effective_route: $effective_route"
     echo "  run_id: $run_id"
     echo "  state_dir: $STATE_ROOT/$rh/$run_id"
     echo "  branch: $BRANCH_PREFIX/$run_id"
@@ -1430,7 +1115,8 @@ kant-loop.sh run TASK.md [--quick|--parallel|--full] [options]
   --detach               백그라운드로 실행
   --agent <tool>         quick 모드에서 사용할 도구 (codex|grok|opencode|agy|claude)
   --model <model>        quick 모드에서 사용할 모델
-  --chain <chain>        명시적 에이전트 체인 (예: "codex:gpt-5.6-terra,glm-5.2,claude")
+  --chain <chain>        명시적 에이전트 체인, tool:model,tool:model,...
+                         (--parallel 모드는 필수, --full 모드는 생략 시 기본 체인 사용)
 EOF
 }
 
@@ -1710,7 +1396,6 @@ cmd_update_guide() {
   read -r answer
   if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
     cp "$external_guide" "$internal_guide"
-    "$LIB_DIR/routing-parser.sh" refresh
     echo "갱신 완료"
   else
     echo "취소됨"
@@ -1816,14 +1501,6 @@ EOF
 # ---------------------------------------------------------------------------
 
 case "${1:-}" in
-  self-scan)
-    shift
-    cmd_self_scan "$@"
-    ;;
-  self-dispatch)
-    shift
-    cmd_self_dispatch "$@"
-    ;;
   preflight)
     shift
     cmd_preflight "$@"
@@ -1866,9 +1543,6 @@ kant-loop.sh — kant-looper 메인 백엔드
 
 서브커맨드:
   preflight [TASK.md]                환경 검사 (사이드 이펙트 없음)
-  self-scan                          자기개선 백로그 조회 (사이드 이펙트 없음)
-  self-dispatch ID [--quick|--full]  TASK 생성 후 run 호출 (기본 = --quick)
-                                     --agent TOOL, --model MODEL
   run TASK.md [--quick|--parallel|--full] [options]
                                      작업 실행 (기본 = --full)
                                      --dry-run, --strict-verify, --no-auto-commit, --detach

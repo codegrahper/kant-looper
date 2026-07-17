@@ -38,16 +38,6 @@ declare -a KANT_FALLBACK_CHAINS_LINEAR=(
 get_fallback_chain() {
   local tool="$1" model="$2"
 
-  if [ "${KANT_ROUTING_SOURCE:-hardcode}" = "ssot" ] && [ -f "$LIB_DIR/ssot-shadow.sh" ]; then
-    source "$LIB_DIR/ssot-shadow.sh"
-    local ssot_chain
-    ssot_chain="$(ssot_resolve_chain_by_tool_model "$tool" "$model" 2>/dev/null || true)"
-    if [ -n "$ssot_chain" ]; then
-      echo "$ssot_chain"
-      return 0
-    fi
-  fi
-
   local line chain=""
   for line in "${KANT_FALLBACK_CHAINS_LINEAR[@]}"; do
     IFS='|' read -ra parts <<< "$line"

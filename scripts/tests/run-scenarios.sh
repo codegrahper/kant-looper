@@ -145,8 +145,10 @@ UI는 stitch 스타일로 작성.
 - 테스트 통과
 EOF
 
+  local chain="codex:gpt-5.6-terra,opencode:glm-5.2,agy:gemini-3.5-flash"
+
   log "  dry-run..."
-  "$SKILL_ROOT/scripts/kant-loop.sh" run "$task_md" --dry-run --parallel || {
+  "$SKILL_ROOT/scripts/kant-loop.sh" run "$task_md" --dry-run --parallel --chain "$chain" || {
     log "  FAIL: dry-run returned non-zero"
     FAIL=$((FAIL+1))
     SCENARIO_RESULTS+=("B: DRY-RUN_FAILED")
@@ -156,7 +158,7 @@ EOF
   log "  dry-run 통과"
   log "  실제 실행:"
   log "    cd $test_repo"
-  log "    $SKILL_ROOT/scripts/kant-loop.sh run $task_md --parallel --auto-route"
+  log "    $SKILL_ROOT/scripts/kant-loop.sh run $task_md --parallel --chain $chain"
   log ""
 
   PASS=$((PASS+1))
@@ -249,9 +251,6 @@ scenario_smoke() {
     PASS=$((PASS+1))
     SCENARIO_RESULTS+=("smoke: PARTIAL (fallback OK)")
   fi
-
-  log "  routing parser dump..."
-  "$SKILL_ROOT/scripts/lib/routing-parser.sh" dump | head -10
 
   log "  safety-check self-test..."
   if "$SKILL_ROOT/scripts/lib/safety-check.sh" self-test; then

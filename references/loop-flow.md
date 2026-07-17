@@ -7,7 +7,7 @@
 ### `--quick` 모드 (가장 가벼움)
 
 ```
-[1] routing-parser.sh auto_route TASK.md
+[1] 도구/모델 선택 (클로드 판단 또는 --agent/--model 명시)
     → 1개 도구/모델 선택
 
 [2] health_check <tool>
@@ -35,7 +35,7 @@
 ### `--parallel` 모드 (동시성)
 
 ```
-[1] routing-parser.sh auto_route TASK.md
+[1] --chain 명시 (필수, 자동 슬라이싱 없음)
     → N개 도구/모델 슬라이스 (예: agy:ui, glm5.2:logic, codex:review)
 
 [2] 각 도구를 병렬 호출 (nohup + wait)

@@ -18,7 +18,6 @@ TESTS=(
   "bash scripts/tests/test-fix-apply-redesign.sh"
   "bash scripts/tests/test-fix-apply-guards.sh"
   "bash scripts/tests/test-meta-agent-loop.sh"
-  "bash scripts/tests/test-meta-aware-routing.sh"
   "bash scripts/tests/test-minimax-routing.sh"
   "bash scripts/tests/test-agent-default-models.sh"
   "bash scripts/tests/test-claude-health-subscription.sh"
@@ -27,12 +26,7 @@ TESTS=(
   "bash scripts/tests/test-redactor.sh"
   "bash scripts/tests/test-python-cache-cleanup.sh"
   "bash scripts/tests/test-fix-apply-e2e.sh"
-  "bash scripts/tests/test-ssot-shadow.sh"
-  "bash scripts/tests/test-routing-source-ssot.sh"
-  "bash scripts/tests/test-routing-ssot-sync.sh"
   "bash scripts/tests/test-await.sh"
-  "bash scripts/tests/test-self-improvement.sh"
-  "bash scripts/tests/test-ssot-stress-simulation.sh"
 )
 
 LABELS=(
@@ -41,7 +35,6 @@ LABELS=(
   "PR B: fix-apply redesign (P0/P1)"
   "PR B: fix-apply guards"
   "PR B: meta-agent 모듈"
-  "meta-aware-routing (메타 에이전트 판단 기반 라우팅)"
   "minimax-routing"
   "agent-default-models (Bug #1 fix)"
   "claude-health-subscription (구독 로그인 인식)"
@@ -50,12 +43,7 @@ LABELS=(
   "PR B: redactor (secret 마스킹)"
   "python-cache-cleanup (커밋 전 pycache 정리)"
   "fix-apply e2e (git 통합)"
-  "ssot-shadow (Phase 3 비침해 관찰)"
-  "routing-source-ssot (Phase 4 토글)"
-  "routing-ssot-sync (Phase 5 hardcode↔SSOT drift 감지)"
   "await 서브커맨드 (--detach 완료 블로킹 대기)"
-  "self-improvement scan/dispatch safety"
-  "ssot-stress-simulation (500회 대조 + 카오스 + 대용량 입력)"
 )
 
 # e2e 테스트는 격리 환경 의존성 (full SKILL) — 경고만 표시

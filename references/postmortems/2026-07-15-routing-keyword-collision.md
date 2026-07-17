@@ -1,5 +1,11 @@
 # 포스트모템: 라우팅 키워드 오탐 (`ui`/`T3` 오분류)
 
+> **후기(2026-07-17)**: 이 문서가 다루는 `routing-parser.sh`는 경량화
+> 작업(5단계, [PLAN-lightweight-kant-looper.md](../../PLAN-lightweight-kant-looper.md))에서
+> 완전히 제거됐다. 자동판정은 이제 코드가 아니라 클로드가 그 자리에서 판단한다.
+> 이 문서는 왜 그 판단을 셸 코드에 맡기면 안 되는지 보여준 실제 사례로서
+> 역사적 기록으로 남겨둔다.
+
 - **날짜**: 2026-07-15
 - **발견 경로**: OpenCode/GLM 어댑터 개선 작업(TASK-opencode-glm-debug-enhanced.md)을
   kant-looper로 디스패치하려다 자동 라우팅 결과가 명백히 이상해서 발견
