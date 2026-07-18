@@ -9,6 +9,99 @@
 
 ## [Unreleased]
 
+### 오픈소스 공개 대비 + 라우팅 가이드 간소화 (2026-07-18)
+
+- **SKILL.md 오픈소스 대응** (`f55443e`, 담당: 클로드)
+  - 특정 사용자 이름("이바") 참조 3곳을 일반 표현으로 교체
+  - Step 1 오프닝 문구를 "Nomad Kant, 칸트와 유랑합니다. 🙏"로 교체 (이전: "어떤 작업을 할까요?")
+  - agy가 선택되는 모든 경로(Step 0 단축입력/자동 선택/직접 선택)에 Google
+    Stitch(UI 디자인 생성 MCP) 사용 여부를 묻는 대화창 추가 — agy가 Stitch
+    MCP에 연결돼 있어도 프롬프트에 명시하지 않으면 안 쓰던 공백을 메움
+- **라우팅 가이드 대폭 간소화** (`10bf729`) — `references/multimodel-coding-agent-routing-guide.md` 637줄 → 139줄
+  - 시장 전체 모델 서베이에서 SKILL.md Step 2로 실제 선택 가능한 12개 모델만 남김
+  - 실제와 다른 가상의 MCP 요청 스키마/툴 분리 절을 실제 어댑터 호출 계약
+    (CLI 직접 호출 → stdout 파싱)으로 재작성
+  - HPRAR와 같은 발상이던 자동 상향 상태 머신, `safety-promises.md`와 겹치던
+    보안 체크리스트, 미사용 평가 가중치표, 지켜지지 않던 유지보수 주기표 삭제
+  - 라이브 재현 결과도 함께 기록: opencode glm-4.7 verdict 누락 재현이
+    엇갈려(다른 세션 2/2 실패, 이 세션 2/2 통과) 확실한 반복 재현 없이는
+    모델을 제거하지 않기로 함
+- **어댑터 주석 오류 수정** (`6473efc`) — `adapter-opencode.sh`의 예시 주석이
+  실제 provider(`zai-coding-plan`)가 아니라 무관한 `opencode-go`를 가리키던
+  오기 정정
+- **GLOSSARY.md 신설 — 16→84개 용어** (`3eb9aa1`, `bb884f0`, `a738a8c`,
+  `180d69a`, `1ad5a91`)
+  - 비개발자가 클로드와 소통하는 데 필요한 개발 용어 사전. 서브에이전트
+    실행 중에만 등장하고 대화에 직접 드러나지 않은 용어까지 포함
+  - Git/프로세스·시스템/데이터 형식/테스트·품질/LLM·에이전트/CLI 관례/
+    칸트루퍼 고유 용어 7개 카테고리로 구성
+
+### 이벤트 기반 에이전트 간 자동 디스패처 POC — 추가 후 되돌림 (2026-07-17, 이바 확정)
+
+- **agy 어댑터 프롬프트 인자 순서 버그 수정** (`214ca0b`)
+  - agy가 `--print`류 플래그를 값 받는 플래그로 처리해 프롬프트를 마지막
+    위치인자로 넘기면 무시함, 게다가 `--sandbox`가 `-p`보다 뒤에 오면
+    `bubbletea: could not open TTY`로 죽는 인자 순서 의존성을 실측으로 확인
+    — `-p`를 맨 앞으로 이동
+  - verdict-extractor의 `validate` 호출이 `set -e` 아래에서 실패 시 어댑터를
+    죽이던 문제에 가드 추가, 죽은 중복 폴백 코드를 `process` 서브커맨드
+    호출로 교체해 `<verdict>` 태그 폴백이 실제로 동작하게 함
+- **event/dispatcher POC 구현 후 라이브 검증, 구조적 결함 발견해 되돌림**
+  (`87eb498` 추가 → `26618bc` 되돌림)
+  - `scripts/event/`, `scripts/dispatcher/`, `config/dispatch-routes.json`으로
+    에이전트 간 자동 콜백·라우팅 POC를 구현, `agy-ui-test-codex` 3단계를
+    실제 라이브로 기계적으로 완주까지 확인
+  - 그 과정에서 `--no-auto-commit`이 `--detach`에서 항상 무시되는 버그도
+    발견해 수정 — `export AUTO_COMMIT=0`이 `--detach`의 nohup 재실행 자식
+    에는 전파되지 않던 문제. `KANT_AUTO_COMMIT`도 함께 export하도록 고침
+  - 하지만 `dispatcher.py`의 `verify()`가 에이전트의 실제 verdict(PASS/
+    CHANGES_REQUESTED)를 전혀 보지 않고 diff+safety+gate 통과 여부만
+    확인해, codex가 명확히 `CHANGES_REQUESTED`를 낸 리뷰도 워크플로우가
+    `completed`로 마감하는 구조적 결함 발견 — 리뷰어가 거부한 코드가
+    완료로 보고된 것
+  - 이바는 이 판정 로직을 기계 검증에 반영하는 대신, 에이전트 간 자동
+    디스패처·콜백 자체를 포기하고 클로드가 감독자로 남는 구조
+    (`클로드 → 외부 에이전트 → 콜백 → 클로드 검증`)로 확정 —
+    `scripts/event/`, `scripts/dispatcher/`, 관련 테스트 5종,
+    `cmd_workflow`/`--workflow`/`--step` 전부 제거. `run --quick
+    [--detach]`/`await`/`status`/`report`/`--existing-worktree` 등
+    클로드가 직접 쓰는 기존 primitive는 유지
+  - 자세한 경위는 `PLAN-lightweight-kant-looper.md` 참고
+
+### quick 안정화 + HPRAR(`--full`) 포기 (2026-07-17, 이바 확정)
+
+- **--parallel/--full 라이브 버그 3건 수정** (`59b187a`, 담당: OpenCode/GLM-5.2,
+  검증: 클로드)
+  - `run_parallel_mode`가 role을 파일명용 "implement-N"으로 만들어 어댑터
+    `call`에도 그대로 넘겨, `adapter-codex.sh`/`adapter-opencode.sh`의
+    정확 문자열 비교(`"implement"`/`"repair"`)에 안 걸려 codex는 읽기전용
+    으로 폴백, opencode는 `--auto` 없이 실행되던 문제 — role과 파일명용
+    slice_id를 분리
+  - parallel 프롬프트가 "위 quick 모드와 동일"이라고 참조했지만 parallel은
+    독립 파일이라 "위"가 없어 opencode가 파싱 가능한 verdict를 못 냄 —
+    quick 모드와 같은 JSON 스키마+`<verdict>` 태그 안내를 parallel/full
+    프롬프트에 그대로 인라인
+  - agy CLI 1.1.3이 짧은 모델 ID(`gemini-3.5-flash`)를 거부하고 표시 이름
+    (`Gemini 3.5 Flash (Medium)`)만 받게 바뀜 — 어댑터에 정규화 로직 추가,
+    사라진 `gemini-3.1-flash-lite`는 모델 목록에서 제거
+  - 검증: codex/opencode/agy 세 조합 모두 `--quick`/`--parallel --chain`으로
+    실제 PASS 재현 확인
+- **HPRAR(`--full`) 포기 결정 기록** (`a80dc7d`)
+  - `--parallel`/`--full` 라이브 실패를 계기로 "자동 라운드 체이닝(HPRAR)
+    자체가 구조적으로 반복 실패한다"는 근거가 논의됐으나, 클로드가 근거로
+    제시된 별도 프로젝트의 실제 기록을 직접 확인한 결과 뒷받침이 불충분함을
+    확인해 이바에게 보고. 이바는 그 검증 결과를 기다리지 않고 이 시점에
+    독립적으로 HPRAR 포기를 확정
+  - 대안: 복잡한 작업은 클로드가 `--quick` 호출을 여러 번 조합해 대화 중
+    직접 운영
+- **run_full_mode 및 HPRAR 코드 제거** (`7477faf`, 담당: 클로드)
+  - `kant-loop.sh`에서 `run_full_mode`와 관련 full 시나리오 전부 삭제
+    (kant-loop.sh 순감소 487줄), 기본 quick·3단계 quick 체인·읽기 전용
+    parallel 계약으로 정리
+  - `--full` 호출 시 "HPRAR 모드는 중단되었습니다. --quick 또는 --quick
+    --chain을 사용하세요" 에러로 명시 안내
+  - OpenCode 라이브 3회 연속 성공으로 quick 경로 재검증
+
 ### 경량화 5단계 — SSOT/자기개선 코드 제거 (2026-07-17, 이바 승인)
 
 `PLAN-lightweight-kant-looper.md` 방향 전환에 따라, 아래 `routing-ssot-integration`
