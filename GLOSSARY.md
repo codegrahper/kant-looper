@@ -8,32 +8,32 @@
 
 **SSOT** : (Single Source of Truth)는 데이터나 정보의 신뢰할 수 있는 기준을
 하나의 출처로 통일하여 관리하는 원칙.
-> 칸트루퍼 사례: 라우팅 가이드(`references/multimodel-coding-agent-routing-guide.md`)를
+> 사례: 라우팅 가이드(`references/multimodel-coding-agent-routing-guide.md`)를
 > 참고 자료로 삼되, 실제로 무엇을 선택할지는 매번 클로드가 판단한다 — 문서가
 > 유일한 근거지만 그걸 기계가 강제로 파싱해서 따르진 않는다.
 
 **ff-only** : (Fast-Forward Only)는 Git에서 브랜치 병합 시 병합 커밋을 만들지
 않고, 브랜치 포인터를 앞으로 이동하는 방식만 허용하는 옵션.
-> 칸트루퍼 사례: 개발 브랜치(`Kant-looper-branch`)에서 만든 커밋을 배포판
+> 사례: 개발 브랜치(`Kant-looper-branch`)에서 만든 커밋을 배포판
 > (`main`)에 반영할 때 `git merge --ff-only`만 쓴다 — 병합 커밋이 안 생기니
 > 히스토리가 한 줄로 깔끔하게 유지된다.
 
 **verdict** : 외부 도구(에이전트)가 작업을 마친 뒤 내리는 최종 판정. "완료했다"는
 말이 아니라 `PASS`(통과) / `CHANGES_REQUESTED`(수정 필요) / `BLOCKED`(막힘) /
 `INVALID_OUTPUT`(판정 자체를 못 냄) 중 하나로 정해진 형식(JSON)으로 나와야 한다.
-> 칸트루퍼 사례: codex가 포트폴리오 사이트 리뷰에서 `CHANGES_REQUESTED`를 냈을
+> 사례: codex가 포트폴리오 사이트 리뷰에서 `CHANGES_REQUESTED`를 냈을
 > 때, 그 안에 "왜 안 되는지"(agy가 불필요한 로그 파일을 같이 커밋함)까지
 > 정확히 담겨 있어서 실제로 유효한 지적이었다.
 
 **worktree** : 하나의 git 저장소를 여러 개의 독립된 작업 폴더로 동시에 열어두는
 git 기능. 브랜치가 달라도 같은 `.git` 히스토리를 공유하면서, 실제 파일은 서로
 다른 폴더에 격리된다.
-> 칸트루퍼 사례: 외부 도구를 부를 때마다 `/tmp/kant-worktree-<번호>` 같은 임시
+> 사례: 외부 도구를 부를 때마다 `/tmp/kant-worktree-<번호>` 같은 임시
 > 폴더를 새로 만들어 그 안에서만 작업시킨다 — 원본 저장소나 다른 작업에 실수로
 > 영향을 주지 않도록 하는 안전장치다.
 
 **fallback** : 1순위로 시도한 것이 실패했을 때 자동으로 대체 수단으로 넘어가는
 동작. 칸트루퍼에서는 `fallback-dispatcher.sh`가 이 역할을 한다.
-> 칸트루퍼 사례: opencode의 glm-4.7이 verdict를 못 내고 실패하더라도, 이 안전망
+> 사례: opencode의 glm-4.7이 verdict를 못 내고 실패하더라도, 이 안전망
 > 덕분에 다른 도구/모델로 자동 전환되므로 모델을 미리 빼지 않고 유지하기로
 > 결정했다.
