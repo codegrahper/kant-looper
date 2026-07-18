@@ -244,7 +244,7 @@ PYEOF
   verdict=$("$SKILL_LIB/verdict-extractor.sh" validate "$json_text")
 
   # changed_files를 모델의 자기 보고가 아니라 git diff 실측값으로 교체한다.
-  # 모델이 파일을 생성했다고 주장해도 실제로 생성되지 않을 수 있고 (opencode-go/glm-5.2 run 1),
+  # 모델이 파일을 생성했다고 주장해도 실제로 생성되지 않을 수 있고 (zai-coding-plan/glm-5.2 run 1),
   # <verdict> 태그 폴백 경로는 changed_files를 빈 배열로 hardcode한다.
   # git diff로 실제 변경 목록을 구해 verdict JSON을 패치한다.
   local actual_changed
