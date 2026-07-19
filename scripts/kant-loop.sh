@@ -871,6 +871,7 @@ cmd_run() {
     echo "state_dir: $state_dir"
     echo "branch: $branch"
     echo "detached_pid: $detached_pid"
+    echo "kant_hook_marker: kant-loop-detach-v1"
     echo ""
     echo "상태 확인:"
     echo "  $SCRIPT_DIR/kant-loop.sh status $run_id"
