@@ -295,17 +295,24 @@ bash "$HOME/.claude/skills/nomad-kant-looper/scripts/kant-loop.sh" run "TASK.md"
 foreground 실행은 Bash 도구 호출 자체가 완료까지 블로킹하므로 별도 콜백 설정이
 필요 없다 — 호출이 끝나면 그 결과가 곧 완료 통지다.
 
-**`--detach`를 쓰는 경우(장시간 작업 등) 반드시 지킬 것**: `--detach`는 사람에게
-macOS 알림을 줄 뿐 클로드에게는 아무 신호도 오지 않는다. `--detach`로 던진 뒤
-바로 이어서 `await <run_id>`를 Bash 도구의 `run_in_background: true`로 호출해야
-완료 시 하네스가 클로드를 깨운다. `--detach`만 실행하고 후속 `await` 없이
-턴을 끝내면 안 된다(2026-07-17 실측: 이걸 빠뜨려서 사용자가 직접 macOS
-알림을 보고 폴링해야 했음).
+**`--detach`를 쓰는 경우(장시간 작업 등)**: Claude Code에서는 `.claude/settings.json`의
+PostToolUse(Bash) 훅(`scripts/hooks/kant-loop-auto-await.sh`, `asyncRewake: true`)이
+`--detach` 성공 출력의 `kant_hook_marker: kant-loop-detach-v1` 마커를 감지해서
+`await <run_id>`를 자동으로 백그라운드에 걸고, 완료 시 하네스가 클로드를 깨운다.
+클로드가 별도로 `await`를 이어서 호출할 필요는 없다 — `--detach` 실행 후 그 자리에서
+턴을 끝내도 된다.
 
 ```bash
 bash "$HOME/.claude/skills/nomad-kant-looper/scripts/kant-loop.sh" run "TASK.md" --quick --agent "$tool" --model "$model" --detach
-# → run_id 즉시 반환
-# 곧바로 이어서, Bash 도구 run_in_background: true로:
+# → run_id 즉시 반환, 이후 await은 훅이 자동으로 처리
+```
+
+훅이 없는 환경(Claude Code 외 하네스, 훅 비활성화 등)에서는 수동으로 이어서
+`await <run_id>`를 Bash 도구의 `run_in_background: true`로 호출해야 완료 시
+알 수 있다(2026-07-17 실측: 훅 도입 전에는 이걸 빠뜨려서 사용자가 직접 macOS
+알림을 보고 폴링해야 했음).
+
+```bash
 bash "$HOME/.claude/skills/nomad-kant-looper/scripts/kant-loop.sh" await "$run_id"
 ```
 
@@ -323,7 +330,7 @@ bash "$HOME/.claude/skills/nomad-kant-looper/scripts/kant-loop.sh" await "$run_i
   - 단축 입력이 무효하면: 정상 두 질문 흐름으로 돌아간다 (무효 안내 한 줄 추가).
 - 추가 확인 질문 금지 (단, 위 모델 선택 UI와 Stitch 선택 UI는 "질문"이 아니라 선택 UI로 취급한다 — 자유 텍스트 질문을 새로 만드는 게 아니라 정해진 선택지를 재사용하는 것이므로 이 금지 규칙의 대상이 아니다).
 - `agy`가 선택되면 반드시 Stitch 사용 여부를 먼저 확인한다. 자동 기본값을 고르지 않는다.
-- `--detach`로 실행했다면 반드시 그 자리에서 바로 `await <run_id>`를 background로 이어서 호출한다. `--detach`만 실행하고 끝내지 않는다.
+- `--detach`로 실행했다면 PostToolUse(Bash) 훅이 `await <run_id>`를 자동으로 백그라운드에 걸어준다 — 클로드가 별도로 이어서 호출할 필요 없음. 훅이 없는 환경에서만 수동으로 `await <run_id>`를 background로 이어서 호출한다.
 - Meta Agent는 작업을 직접 구현하지 않는다.
 - 해결책을 제안하지 않는다.
 - 분석하지 않는다.
