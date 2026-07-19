@@ -9,6 +9,47 @@
 
 ## [Unreleased]
 
+### PostToolUse 훅 자동 완료 알림 — 도입 후 신뢰성 미달로 되돌림, 그 과정에서 발견한 체인 버그는 수정 (2026-07-19)
+
+- **PostToolUse asyncRewake 훅 도입** (`7a1ff94`, 담당: 클로드)
+  - `--detach`로 던진 외부 도구 실행이 끝나면 `.claude/settings.json`의
+    `PostToolUse(Bash)` 훅(`scripts/hooks/kant-loop-auto-await.sh`,
+    `asyncRewake: true`)이 자동으로 `await`를 백그라운드에 걸고 클로드를
+    깨우도록 만듦. 클로드가 매번 수동으로 `await`를 background로 이어
+    거는 단계를 없애려는 시도.
+- **실전 3회 테스트 결과 신뢰할 수 없다고 판명, 도입 전 수동 패턴으로 복원**
+  (`e1c8968` SKILL.md 되돌림, `9bff2cc` 훅 등록/스크립트 삭제)
+  - 1회 정상 작동 / 1회 조기 오탐(아래 버그가 원인) / 1회는 실제로
+    완료·커밋까지 됐는데도 원인 불명으로 완전히 침묵 — 아무 신호도 없이
+    조용히 실패하는 쪽이 "깜빡함"보다 더 나쁜 실패 모드라고 판단
+  - Step 3 실행 절/Rules 절/Technical Reference 모두 `--detach` 후
+    `await`를 Bash 도구 `run_in_background: true`로 즉시 이어 거는 기존
+    수동 패턴으로 되돌림. 훅 파일 자체는 침묵 원인 조사용 증거로 잠시
+    남겨뒀다가, 신뢰하지 않기로 한 채 등록만 방치하면(매 Bash 호출마다
+    불필요한 서브프로세스 스폰 + 나중에 경고를 놓치고 재의존할 위험)
+    의미가 없다고 판단해 완전히 삭제함
+- **원인 조사 중 발견한 진짜 버그: 체인 중간 단계 `result.txt` 조기 기록**
+  (수정 `e65df54`, 회귀 테스트 `0a3740a`)
+  - `run_quick_mode`가 `commit_at_end=0`이면 무조건 공유 `result.txt`에
+    `pass_no_commit`을 썼는데, `run_quick_chain`은 implement/review/repair
+    3단계 모두 `commit_at_end=0`으로 호출해서, 체인이 아직 안 끝났는데도
+    중간 단계 하나가 PASS할 때마다 마치 최종 완료처럼 `result.txt`가
+    덮어써졌다. `cmd_await`(및 위 훅)는 이 조기 기록을 완료로 오판했다.
+  - `run_quick_mode`에 8번째 파라미터 `defer_terminal_result`(기본값 0,
+    기존 standalone 호출 동작 불변) 추가. `run_quick_chain`만 각 단계
+    호출에 `1`을 넘겨 중간 단계가 `result.txt`를 건드리지 않게 함.
+    실제 위임(codex:gpt-5.6-sol)으로 구현했고, 클로드가 diff와
+    `test-all.sh` 재실행으로 직접 검증함.
+  - 회귀 테스트 `scripts/tests/test-chain-result-race.sh` 신설,
+    `test-all.sh`에 등록. 즉시 응답하는 가짜 adapter로 4가지(중간 단계
+    `result.txt` 무결성, 체인 성공 시 최종 기록, standalone review 기존
+    동작 유지, 체인 중간 실패 시 즉시 실패) 검증
+  - 실전 라이브 체인(opencode:glm-4.7 → codex:gpt-5.6-terra → codex:gpt-5.6-luna)
+    으로 재검증: implement PASS(08:44:30) 후 review가 끝날 때까지
+    (08:47:42) 조기 완료 신호 없음 확인. review는 별개로
+    `CHANGES_REQUESTED`(내용 리뷰, 메커니즘과 무관)를 냈고 chain은
+    설계대로 즉시 실패 처리, repair 미호출을 확인함
+
 ### 오픈소스 공개 대비 + 라우팅 가이드 간소화 (2026-07-18)
 
 - **SKILL.md 오픈소스 대응** (`f55443e`, 담당: 클로드)
