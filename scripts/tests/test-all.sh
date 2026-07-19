@@ -29,6 +29,7 @@ TESTS=(
   "bash scripts/tests/test-fix-apply-e2e.sh"
   "bash scripts/tests/test-await.sh"
   "bash scripts/tests/test-detached-terminal-state.sh"
+  "bash scripts/tests/test-chain-result-race.sh"
 )
 
 LABELS=(
@@ -48,6 +49,7 @@ LABELS=(
   "fix-apply e2e (git 통합)"
   "await 서브커맨드 (--detach 완료 블로킹 대기)"
   "detached terminal-state fallback"
+  "chain result.txt race (2026-07-19 버그 회귀 방지)"
 )
 
 # e2e 테스트는 격리 환경 의존성 (full SKILL) — 경고만 표시
