@@ -1,6 +1,6 @@
 ---
 name: nomad-kant-looper
-description: 외부 CLI 도구(codex, grok, opencode, agy, claude)를 백그라운드로 호출해 작업을 시키고, Claude가 결과를 비판적으로 검증한 뒤 작업 브랜치에 커밋합니다. main 병합은 사용자의 명시적 승인을 기다립니다. "백그라운드로 돌려서 검증까지", "코덱스한테 시키고 결과만 확인하고 싶어", "루프로 처리하고 끝나면 알려줘", "HPRAR 가볍게 돌려줘", "main 병합은 내가 직접 할게", "도구 한 번만 호출해서 끝내줘", "여러 모델 동시에 돌려줘", "agy한테 UI 맡기고 glm한테 로직 맡겨" 라는 발화에서 즉시 트리거.
+description: 외부 CLI 도구(codex, grok, opencode, agy, claude)를 백그라운드로 호출해 작업을 시키고, Meta Agent가 결과를 비판적으로 검증한 뒤 작업 브랜치에 커밋합니다. main 병합은 사용자의 명시적 승인을 기다립니다. "백그라운드로 돌려서 검증까지", "코덱스한테 시키고 결과만 확인하고 싶어", "루프로 처리하고 끝나면 알려줘", "HPRAR 가볍게 돌려줘", "main 병합은 내가 직접 할게", "도구 한 번만 호출해서 끝내줘", "여러 모델 동시에 돌려줘", "agy한테 UI 맡기고 glm한테 로직 맡겨" 라는 발화에서 즉시 트리거.
 user-invocable: true
 allowed-tools:
   - "Bash(scripts/kant-loop.sh:*)"
@@ -40,10 +40,10 @@ allowed-tools:
 **단축 입력이 유효하면:**
 
 - `@도구:모델` (모델까지 지정됨) + 같은 메시지에 작업 설명 텍스트가 있으면 → Step 1과 Step 2를 모두 건너뛴다. 단, 도구가 `agy`이면 아래 Stitch 선택 UI를 먼저 띄운 뒤 Step 3으로 진행한다.
-- `@도구:모델` + 작업 설명 텍스트가 없으면 → Step 2는 건너뛰되 Step 1의 질문("Nomad Kant, 칸트와 유랑합니다. 🙏")을 한다. 도구가 `agy`이면 작업 내용을 받은 뒤 Stitch 선택 UI를 띄우고 Step 3으로 진행한다.
-- `@도구`만 있고 모델이 없으면 → 도구 선택은 확정됐지만 모델은 미정이므로, Step 2 "직접 선택"의 **모델 선택 UI만** 그 도구 기준으로 띄운다 (Step 2의 "선택형 UI 가용성" 절과 동일 로직 — 선택형 UI 가용 시 AskUserQuestion류 사용, 아니면 텍스트 목록 폴백). 작업 설명이 없으면 모델 선택과 별개로 Step 1 질문도 필요.
+- `@도구:모델` + 작업 설명 텍스트가 없으면 → Step 2는 건너뛰되 Step 1의 질문("Nomad Kant Looper, 칸트와 유랑하세요. 👋")을 한다. 도구가 `agy`이면 작업 내용을 받은 뒤 Stitch 선택 UI를 띄우고 Step 3으로 진행한다.
+- `@도구`만 있고 모델이 없으면 → 도구 선택은 확정됐지만 모델은 미정이므로, Step 2 "직접 선택"의 **모델 선택 UI만** 그 도구 기준으로 띄운다 (Step 2의 "선택형 UI 가용성" 절과 동일 로직 — 구조화된 선택 UI 가용 시 사용, 아니면 텍스트 목록 폴백). 작업 설명이 없으면 모델 선택과 별개로 Step 1 질문도 필요.
   - 자동 기본값을 임의로 고르지 않는다. 반드시 사용자가 모델을 직접 선택하게 한다.
-  - 도구가 `agy`이면 모델 선택과 아래 Stitch 선택을 한 번의 AskUserQuestion 호출에 두 질문으로 묶는다.
+  - 도구가 `agy`이면 모델 선택과 아래 Stitch 선택을 한 번의 구조화된 선택 UI 호출에 두 질문으로 묶는다.
 
 **Stitch 선택 UI (`agy` 전용):**
 
@@ -67,7 +67,8 @@ allowed-tools:
 
 **질문:**
 
-Nomad Kant, 칸트와 유랑합니다. 🙏
+Nomad Kant Looper, 칸트와 유랑하세요. 👋
+반복의 끝에서 감동을 만나세요. 🙏
 
 사용자의 자유 입력을 기다린다.
 
@@ -93,12 +94,12 @@ Nomad Kant, 칸트와 유랑합니다. 🙏
 
 **선택 1: 자동 선택**
 
-자동 선택은 셸 스크립트의 자동판정이 아니라 **클로드가 그 자리에서 판단**한다
-(판단·위임 원칙). 고정된 라우팅 파서 대신, 아래 절차를 클로드가 직접 수행한다.
+자동 선택은 셸 스크립트의 자동판정이 아니라 **Meta Agent가 그 자리에서 판단**한다
+(판단·위임 원칙). 고정된 라우팅 파서 대신, 아래 절차를 Meta Agent가 직접 수행한다.
 
 자동 선택 프로세스:
 
-1. **주 작업 의도 파악** — TASK.md 내용을 읽고 클로드가 직접 주 목적을 판단한다.
+1. **주 작업 의도 파악** — TASK.md 내용을 읽고 Meta Agent가 직접 주 목적을 판단한다.
    - `implement` (구현) — 기본값
    - `test` (테스트 작성)
    - `review` (리뷰/검증/감사)
@@ -109,7 +110,7 @@ Nomad Kant, 칸트와 유랑합니다. 🙏
    - `cli` (터미널/시스템)
    - `research` (조사/분석)
 
-2. **작업 복잡도 판단** — 변경 범위와 영향도를 클로드가 직접 평가한다.
+2. **작업 복잡도 판단** — 변경 범위와 영향도를 Meta Agent가 직접 평가한다.
    - `T0` — 읽기/요약/정형 변환
    - `T1` — 한두 파일/완료 조건 명확
    - `T2` — 여러 파일/일반 설계
@@ -117,7 +118,7 @@ Nomad Kant, 칸트와 유랑합니다. 🙏
    - `T4` — 장기/다중 시스템/1M 컨텍스트
 
 3. **도구/모델 선택** — `references/multimodel-coding-agent-routing-guide.md`를
-   참고해서 의도 × 복잡도에 맞는 도구/모델을 클로드가 고른다. 주 의도와 보조
+   참고해서 의도 × 복잡도에 맞는 도구/모델을 Meta Agent가 고른다. 주 의도와 보조
    키워드가 충돌할 때는 주 의도를 우선한다.
    예: "인증 로직을 수정하고 테스트를 추가한다" → 주 의도=implement → `codex:terra`
    (테스트 언급만으로 `codex:luna`를 고르지 않는다)
@@ -134,7 +135,7 @@ Nomad Kant, 칸트와 유랑합니다. 🙏
    - 아니오 — agy가 바로 구현 (Stitch 없이 agy가 직접 코드로 구현, 기존 기본 동작)
 
 이 프로세스는 라우팅 정책(`references/multimodel-coding-agent-routing-guide.md`)을
-참고 자료로 삼아 클로드가 직접 판단한다. 사용자가 도구를 명시하면(오버라이드)
+참고 자료로 삼아 Meta Agent가 직접 판단한다. 사용자가 도구를 명시하면(오버라이드)
 그 지시를 그대로 따르고 이 자동 선택 절차는 건너뛴다.
 
 **선택 2: 직접 선택**
@@ -206,7 +207,7 @@ kant-loop.sh run TASK.md --quick --agent opencode --model MiniMax-M2.7
 모델 선택 후 선택된 내용을 확인하고 진행한다.
 
 **선택형 UI 가용성:**
-- Claude Code의 선택형 질문 UI를 사용할 수 있으면 활용한다.
+- Runtime이 제공하는 구조화된 선택 UI(가용 시)를 사용할 수 있으면 활용한다.
 - 사용할 수 없는 환경에서는 기존 텍스트 입력 방식으로 폴백한다.
 
 ** 비대화형 실행:**
@@ -346,7 +347,8 @@ bash "$HOME/.claude/skills/nomad-kant-looper/scripts/kant-loop.sh" await "$run_i
 ```
 User: /nomad-kant-looper
 
-Assistant: Nomad Kant, 칸트와 유랑합니다. 🙏
+Assistant: Nomad Kant Looper, 칸트와 유랑하세요. 👋
+반복의 끝에서 감동을 만나세요. 🙏
 
 User:大型 저장소의 버그를 수정해주세요.
 
@@ -406,7 +408,8 @@ Model: glm-5.2
 ```
 User: /nomad-kant-looper
 
-Assistant: Nomad Kant, 칸트와 유랑합니다. 🙏
+Assistant: Nomad Kant Looper, 칸트와 유랑하세요. 👋
+반복의 끝에서 감동을 만나세요. 🙏
 
 User: 단위 테스트를 추가해주세요.
 
@@ -522,7 +525,8 @@ Assistant: 모델을 선택하세요:
 
 User: gpt-5.6-luna
 
-Assistant: Nomad Kant, 칸트와 유랑합니다. 🙏
+Assistant: Nomad Kant Looper, 칸트와 유랑하세요. 👋
+반복의 끝에서 감동을 만나세요. 🙏
 
 User: 단위 테스트를 추가해주세요.
 
@@ -627,7 +631,7 @@ kant-loop.sh cleanup --apply
 
 ### 자동 라우팅 (T0~T4)
 
-판정은 코드가 아니라 **클로드**가 한다 (판단·위임 원칙). 아래 표는 클로드가
+판정은 코드가 아니라 **Meta Agent**가 한다 (판단·위임 원칙). 아래 표는 Meta Agent가
 참고하는 휴리스틱일 뿐, 어떤 스크립트도 이 표를 파싱해서 강제하지 않는다.
 가이드 문서(`references/multimodel-coding-agent-routing-guide.md`)도 마찬가지로
 참고 자료 — 모델 후보군의 출처이지 자동판정 로직의 입력이 아니다.
@@ -644,7 +648,7 @@ kant-loop.sh cleanup --apply
 
 **유지보수 절차**: 이 표나 가이드 문서의 모델명이 바뀌면 문서만 고치면 된다 —
 동기화해야 할 코드가 없다. 후보 모델 자체(레지스트리)는 사용자가 정의·유지하고,
-그 범위 안에서 클로드가 작업마다 판단해서 위임한다.
+그 범위 안에서 Meta Agent가 작업마다 판단해서 위임한다.
 
 ### 안전 약속 (절대 위반 안 됨)
 
@@ -714,7 +718,7 @@ main에 합치시려면:
 > 1. **외부 가이드를 skill 폴더 내부 SSOT로**. 절대 외부 경로 참조 안 함. `/nomad-kant-looper update-guide`로만 갱신.
 > 2. **호출 실패 시 즉시 fallback**. claude가 마지막 폴백. 작업 중단 거의 없음.
 > 3. **MCP/CLI health check를 모든 호출 전 수행**. 죽은 도구는 즉시 우회.
-> 4. **Claude 사용량 절감**. Claude는 메타 오케스트레이션만.
+> 4. **Meta Agent Host 사용량 절감**. Meta Agent는 오케스트레이션만 수행하고, 실제 구현은 Worker Agent에게 위임한다.
 > 5. **merge는 사용자가 명시 실행**. 3중 강제 (allowed-tools + 스크립트 + promote 분기).
 > 6. **사용자가 개입하는 순간 그건 nomad-kant-looper가 아닙니다**. 완전 자동이 1차 목표.
 > 7. **칸트는 냉정합니다**. verdict는 verdict대로. 감정/사정 개입 없이 원칙만으로 결정.

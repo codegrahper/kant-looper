@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# kant-loop.sh — kant-looper 메인 백엔드
+# kant-loop.sh — nomad-kant-looper 메인 백엔드
 #
 # 서브커맨드:
 #   preflight TASK.md                          환경 검사 (side-effect 없음)
@@ -41,7 +41,7 @@ export KANT_ADAPTERS_DIR="$ADAPTERS_DIR"
 # 기본 환경값
 # ---------------------------------------------------------------------------
 
-STATE_ROOT="${KANT_STATE_ROOT:-$HOME/.claude/state/kant-looper}"
+STATE_ROOT="${KANT_STATE_ROOT:-$HOME/.claude/state/nomad-kant-looper}"
 AUTO_COMMIT="${KANT_AUTO_COMMIT:-1}"
 BRANCH_PREFIX="${KANT_BRANCH_PREFIX:-agent/kant}"
 NOTIFY="${KANT_NOTIFY:-1}"
@@ -101,7 +101,7 @@ fail_run() {
     log_event "$state_dir" "FAIL $code: $message"
   fi
 
-  notify_macos "kant-looper: failed" "$code - $message"
+  notify_macos "nomad-kant-looper: failed" "$code - $message"
   return 1
 }
 
@@ -265,8 +265,8 @@ EOF
   (cd "$worktree" && \
     git -c core.hooksPath="$empty_hooks" \
         -c commit.gpgSign=false \
-        -c user.name="kant-looper" \
-        -c user.email="kant-looper@local" \
+        -c user.name="nomad-kant-looper" \
+        -c user.email="nomad-kant-looper@local" \
         commit -F "$state_dir/commit-message.txt") > "$state_dir/commit.log" 2>&1
 
   local commit_rc=$?
@@ -297,7 +297,7 @@ EOF
   echo "completed" > "$state_dir/result.txt"
   log_event "$state_dir" "COMMIT $commit_sha"
 
-  notify_macos "kant-looper: completed" "$current_branch @ $commit_sha"
+  notify_macos "nomad-kant-looper: completed" "$current_branch @ $commit_sha"
 
   return 0
 }
@@ -512,7 +512,7 @@ EOF
     return $?
   elif [ "$defer_terminal_result" != "1" ]; then
     echo "pass_no_commit" > "$state_dir/result.txt"
-    notify_macos "kant-looper: pass_no_commit" "quick mode, $role $tool:$model"
+    notify_macos "nomad-kant-looper: pass_no_commit" "quick mode, $role $tool:$model"
   fi
   return 0
 }
@@ -657,7 +657,7 @@ EOF
   fi
 
   echo "pass_no_commit" > "$state_dir/result.txt"
-  notify_macos "kant-looper: parallel review passed" "${#pairs[@]} reviewers"
+  notify_macos "nomad-kant-looper: parallel review passed" "${#pairs[@]} reviewers"
   return 0
 }
 
@@ -1026,7 +1026,7 @@ cmd_report() {
   fi
 
   cat <<EOF
-# kant-looper 보고서 — $run_id
+# nomad-kant-looper 보고서 — $run_id
 
 - run_id: $run_id
 - 결과: $(cat "$state_dir/result.txt" 2>/dev/null || echo "running")
@@ -1117,7 +1117,7 @@ cmd_promote() {
 
   local rc=$?
   if [ "$rc" = "0" ]; then
-    notify_macos "kant-looper: promoted" "$branch → $target"
+    notify_macos "nomad-kant-looper: promoted" "$branch → $target"
     log "promote 성공"
   else
     log "promote 실패 (exit=$rc)"
@@ -1356,7 +1356,7 @@ case "${1:-}" in
     ;;
   -h|--help|help|"")
     cat <<EOF
-kant-loop.sh — kant-looper 메인 백엔드
+kant-loop.sh — nomad-kant-looper 메인 백엔드
 
 서브커맨드:
   preflight [TASK.md]                환경 검사 (사이드 이펙트 없음)
