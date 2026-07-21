@@ -1,5 +1,7 @@
 # loop-flow.md
 
+> ⚠️ **낡은 문서**: 이 문서는 폐기된 HPRAR 라운드 상태 모델을 설명합니다. 현재 `kant-loop.sh`는 `implement`/`review`/`repair` 3역할만 사용합니다. 역사적 기록으로 보존합니다.
+
 > kant-looper의 라운드별 상태 머신과 state 디렉터리 구조. 백엔드(`scripts/kant-loop.sh`) 구현의 입출력 계약.
 
 ## 호출 모드와 라운드

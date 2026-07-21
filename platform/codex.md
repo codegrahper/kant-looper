@@ -6,9 +6,10 @@
 
 설치 경로는 `$HOME/.codex/skills/nomad-kant-looper`이다.
 
-> **TODO (설치 방식):** 현재 이 경로는 이 저장소의 독립된 git clone으로
-> 운영되고 있다. 추후 Claude Code와 동일하게 worktree 방식으로 전환될
-> 예정이지만, 그 전환은 별개 작업에서 다룬다. (`install.sh` 도입 예정.)
+> **설치 방식:** 이 경로(`$HOME/.codex/skills/nomad-kant-looper`)는 이 저장소의
+> git worktree다. `install.sh --agent codex`로 생성/갱신한다(재실행 시
+> `git pull --ff-only`가 사실상의 sync 경로). 예전에는 독립 clone이었으나
+> v0.6.0에서 worktree로 전환됐다.
 
 ## Codex 전용 인터페이스 메타데이터
 

@@ -1,5 +1,7 @@
 # failure-modes.md
 
+> ⚠️ **낡은 문서**: 이 문서는 폐기된 HPRAR 라운드 상태 모델을 설명합니다. 현재 `kant-loop.sh`는 `implement`/`review`/`repair` 3역할만 사용합니다. 역사적 기록으로 보존합니다.
+
 > 호출 실패 / verdict 실패 / 무진전 / 안전 위반 등 모든 실패 모드의 대응 정책. routing 가이드 10.2 + 11절 기반.
 
 ## 실패 모드 분류

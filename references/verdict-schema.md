@@ -1,5 +1,7 @@
 # verdict-schema.md
 
+> ⚠️ **낡은 문서**: 이 문서는 폐기된 HPRAR 라운드 상태 모델을 설명합니다. 현재 `kant-loop.sh`는 `implement`/`review`/`repair` 3역할만 사용합니다. 역사적 기록으로 보존합니다.
+
 > 외부 에이전트 응답 스키마. 모든 role 공통 4-value enum + role별 required 필드.
 
 ## 공통 스키마

@@ -3,7 +3,7 @@
 > 실행 경로: `~/.claude/skills/nomad-kant-looper` (main) · 개발 경로: `AGENTS/kant-looper-dev` (`Kant-looper-branch`)
 > 프로젝트 시작: 2026-07-12
 
-**버전 정책**: 0.x대 semver. `MINOR`(`0.X.0`)는 새 기능/아키텍처, `PATCH`(`0.X.Y`)는 인터페이스 변경 없는 버그 수정. `1.0.0`은 아직 사용하지 않음 — `--full`/`--parallel` 실제 호출 검증과 claude 폴백 안정성이 더 쌓여야 붙임. 각 버전은 main의 해당 커밋에 `git tag v0.X.Y`로 소급 태깅되어 있음 (`git tag -l "v0.*"`로 확인).
+**버전 정책**: 0.x대 semver. `MINOR`(`0.X.0`)는 새 기능/아키텍처, `PATCH`(`0.X.Y`)는 인터페이스 변경 없는 버그 수정. `1.0.0`은 아직 사용하지 않음 — `--parallel` 실제 호출 검증과 claude 폴백 안정성이 더 쌓여야 붙임. 각 버전은 main의 해당 커밋에 `git tag v0.X.Y`로 소급 태깅되어 있음 (`git tag -l "v0.*"`로 확인).
 
 ---
 
