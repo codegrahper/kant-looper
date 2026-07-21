@@ -1,6 +1,6 @@
 # Nomad Kant Looper란 무엇인가
 
-![version](https://img.shields.io/badge/version-v0.5.0-blue)
+![version](https://img.shields.io/badge/version-v0.6.0-blue)
 
 **Nomad Kant Looper는 여러 AI 코딩 에이전트를 지휘해, 계획·구현·검증·수정을 반복 수행하는 Bash 기반 자동화 코딩 오케스트레이터입니다.**
 

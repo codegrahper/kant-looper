@@ -1,6 +1,6 @@
-# CHANGELOG — Kant-Looper
+# CHANGELOG — Nomad Kant Looper
 
-> 실행 경로: `~/.claude/skills/kant-looper` (main) · 개발 경로: `AGENTS/kant-looper-dev` (`Kant-looper-branch`)
+> 실행 경로: `~/.claude/skills/nomad-kant-looper` (main) · 개발 경로: `AGENTS/kant-looper-dev` (`Kant-looper-branch`)
 > 프로젝트 시작: 2026-07-12
 
 **버전 정책**: 0.x대 semver. `MINOR`(`0.X.0`)는 새 기능/아키텍처, `PATCH`(`0.X.Y`)는 인터페이스 변경 없는 버그 수정. `1.0.0`은 아직 사용하지 않음 — `--full`/`--parallel` 실제 호출 검증과 claude 폴백 안정성이 더 쌓여야 붙임. 각 버전은 main의 해당 커밋에 `git tag v0.X.Y`로 소급 태깅되어 있음 (`git tag -l "v0.*"`로 확인).
@@ -8,6 +8,73 @@
 ---
 
 ## [Unreleased]
+
+## [0.6.0] — 2026-07-21 — Nomad Kant Looper 정체성 확립 + Agent-agnostic Stage 1
+
+### MANIFESTO 문구 정정 — Human Sovereignty + "왜 몸통이 없는가" (2026-07-21)
+
+- **`f987686`**: Human Sovereignty 섹션에 "인간은 판단을 외주하지 않습니다"
+  문장 추가, "사람"을 "인간"으로 통일
+- **"왜 몸통이 Claude인가" → "왜 몸통이 없는가"로 재작성**: 아래 Stage 1
+  리팩터로 SKILL.md에서 "Claude=오케스트레이터" 하드코딩을 걷어냈는데,
+  MANIFESTO에는 "이 원칙을 실제로 조율하는 몸통은 Claude"라는 모순된 문장이
+  남아있던 것을 발견해 정정. 이름의 철학적 기원은 Claude와의 설계 대화에서
+  나왔지만, 원칙 자체는 어떤 Runtime의 몸에도 정착하지 않는다는 내용으로 수정
+
+### Stage 1 — Agent-agnostic 아키텍처 스켈레톤 (2026-07-20)
+
+맥스(Codex)와 상의해 작성된 설계 문서를 바탕으로, Nomad Kant Looper를
+Claude Code 전용 스킬에서 Claude Code·Codex·OpenCode 모두가 오케스트레이터
+(Meta Agent Host)로 쓸 수 있는 구조로 1단계 리팩터. 이 세션에서 세 런타임
+모두 실제로 Meta Agent 역할을 수행하는 것을 라이브로 확인한 뒤 진행함.
+
+- **증분 1·2 — SKILL.md 어휘 일반화** (`8e02b18`): 프론트매터
+  description·Step 2 자동 선택 서술·설계 원칙 등 약 10곳의 "클로드/Claude"를
+  "Meta Agent"로, `AskUserQuestion` 명칭을 "구조화된 선택 UI"로 치환. 순수
+  어휘 치환이라 동작 불변 — `grep "클로드\|AskUserQuestion" SKILL.md` 0건 확인
+- **증분 3 — `platform/` 스켈레톤** (`b593b4a`): 기존 `scripts/adapters/`
+  (Worker Provider 축, 워커 호출용, 미변경)와 이름이 겹치지 않도록 런타임별
+  Meta Agent Host 차이를 `platform/README.md`·`claude-runtime.md`·`codex.md`·
+  `opencode.md` 4개 문서로 분리. `agents/openai.yaml`이 이미 Codex 전용
+  메타데이터 분리 역할을 하고 있음을 문서화(신규 파일 불필요)
+- **증분 4 — `$SKILL_DIR` 도입** (`ad7ec49`): SKILL.md의 `$HOME/.claude/skills/nomad-kant-looper/...`
+  하드코딩 경로 3곳을 `$SKILL_DIR`로 치환. 본문과 Technical Reference에
+  중복 서술돼 있던 `--detach`+`run_in_background`+PostToolUse 훅 상세
+  내용을 `platform/claude-runtime.md`로 이동
+- **증분 5 — `install.sh`** (`478b98d`): `./install.sh --agent claude|codex|opencode|all|auto [--dry-run] [--force]`.
+  symlink나 단순 clone이 아니라 `git worktree` 방식 채택(Claude 쪽은 이미
+  이 방식으로 검증됨). 기존 foreign clone(`~/.codex/skills/nomad-kant-looper`)은
+  자동으로 지우지 않고 감지 후 거부, `--force`로만 제거 후 worktree로 재연결.
+  실제로 `--agent claude`/`--agent codex` 둘 다 라이브 실행해 worktree 생성 확인
+- **`d05ad74`**: `test-meta-agent-loop.sh`의 스킬 리네임(kant-looper→
+  nomad-kant-looper) 이전 하드코딩 경로 수정
+- **보류(이번 범위 밖)**: 설계 결정 6(config priority의 ENV 위치), PLAN/VERIFY를
+  bash phase로 재구현하는 것(2026-07-17 HPRAR 포기 결정과 충돌하므로 문서
+  라벨링으로만 처리), `fallback-dispatcher.sh` 체인 내부 로직,
+  `no-progress-detector.sh`(죽은 코드), `references/loop-flow.md` 등 이미
+  낡은 참고문서 — 전부 그대로 둠
+- **검증**: `scripts/tests/test-all.sh` 17개 스위트 전부 PASS, `bash -n`으로
+  `install.sh`/`kant-loop.sh` 문법 확인
+
+### Nomad Kant Looper 정체성 확립 — 매니페스토·리네임·저장소 이전 (2026-07-19)
+
+- **MANIFESTO.md 신설** (`16c9856`): "Nomad Kant Looper" 정체성 선언 —
+  6개 핵심 가치(Principle Sovereignty, Switchability, AI Pluralism, Bounded
+  Delegation, Human Sovereignty, Verifiable Autonomy)
+- **README 재작성 + MANIFESTO.md로 파일명 확정** (`f784230`): 제목·본문의
+  "Kant Looper" 표기를 "Nomad Kant Looper"로 전환. 기존 철학 설명 섹션
+  155줄을 MANIFESTO.md 링크 + 태그라인 3줄로 축약(270→123줄)
+- **스킬 리네임** (`577d730`): SKILL.md 프론트매터 `name`을
+  `nomad-kant-looper`로, 슬래시 커맨드 `/kant-looper`→`/nomad-kant-looper`
+  전면 교체
+- **인프라 이전** (커밋 아님, 수동 작업): GitHub 저장소를
+  `codegrahper/Kant-Looper`→`codegrahper/nomad-kant-looper`로 `gh repo
+  rename`, 배포 디렉터리를 `~/.claude/skills/kant-looper`→
+  `~/.claude/skills/nomad-kant-looper`로 이전(메인 워크트리라
+  `git worktree move` 불가 — `mv` 후 `git worktree repair`로 두 linked
+  worktree 복구), 로컬 3곳(`kant-looper-dev`, 배포 워크트리,
+  `fix/claude-subscription-login` 워크트리)의 origin remote URL을 새
+  저장소로 갱신해 "저장소 이동" 경고 제거
 
 ### PostToolUse 훅 자동 완료 알림 — 도입 후 신뢰성 미달로 되돌림, 그 과정에서 발견한 체인 버그는 수정 (2026-07-19)
 
