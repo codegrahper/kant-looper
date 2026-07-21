@@ -30,6 +30,7 @@ TESTS=(
   "bash scripts/tests/test-await.sh"
   "bash scripts/tests/test-detached-terminal-state.sh"
   "bash scripts/tests/test-chain-result-race.sh"
+  "bash scripts/tests/test-status-report-json.sh"
 )
 
 LABELS=(
@@ -50,6 +51,7 @@ LABELS=(
   "await 서브커맨드 (--detach 완료 블로킹 대기)"
   "detached terminal-state fallback"
   "chain result.txt race (2026-07-19 버그 회귀 방지)"
+  "status/report --json 출력"
 )
 
 # e2e 테스트는 격리 환경 의존성 (full SKILL) — 경고만 표시

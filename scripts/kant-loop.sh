@@ -973,7 +973,18 @@ _run_mode() {
 # ---------------------------------------------------------------------------
 
 cmd_status() {
-  local target="${1:-}"
+  local json_output=0
+  local -a status_args=()
+  while [ $# -gt 0 ]; do
+    if [ "$1" = "--json" ]; then
+      json_output=1
+    else
+      status_args+=("$1")
+    fi
+    shift
+  done
+
+  local target="${status_args[0]:-}"
   local rh
   rh="$(repo_hash)"
 
@@ -991,6 +1002,62 @@ cmd_status() {
   if [ ! -d "$state_dir" ]; then
     echo "run not found: $target"
     exit 1
+  fi
+
+  if [ "$json_output" = "1" ]; then
+    local result branch="" worktree="" commit="" failure_code="" failure_message=""
+    local branch_present=0 worktree_present=0 commit_present=0 failure_message_present=0
+    result="$(cat "$state_dir/result.txt" 2>/dev/null || echo "running")"
+    if [ -f "$state_dir/branch.txt" ]; then branch="$(cat "$state_dir/branch.txt")"; branch_present=1; fi
+    if [ -f "$state_dir/worktree.txt" ]; then worktree="$(cat "$state_dir/worktree.txt")"; worktree_present=1; fi
+    if [ -f "$state_dir/commit-sha.txt" ]; then commit="$(cat "$state_dir/commit-sha.txt")"; commit_present=1; fi
+    if [ -f "$state_dir/failure-code.txt" ]; then failure_code="$(cat "$state_dir/failure-code.txt")"; fi
+    if [ -f "$state_dir/failure-message.txt" ]; then failure_message="$(cat "$state_dir/failure-message.txt")"; failure_message_present=1; fi
+
+    KANT_JSON_RUN_ID="$target" \
+    KANT_JSON_RESULT="$result" \
+    KANT_JSON_BRANCH="$branch" KANT_JSON_BRANCH_PRESENT="$branch_present" \
+    KANT_JSON_WORKTREE="$worktree" KANT_JSON_WORKTREE_PRESENT="$worktree_present" \
+    KANT_JSON_COMMIT="$commit" KANT_JSON_COMMIT_PRESENT="$commit_present" \
+    KANT_JSON_FAILURE_CODE="$failure_code" \
+    KANT_JSON_FAILURE_MESSAGE="$failure_message" KANT_JSON_FAILURE_MESSAGE_PRESENT="$failure_message_present" \
+    python3 - "$state_dir/phase-events.log" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+
+def optional(name):
+    return os.environ[name] if os.environ[f"{name}_PRESENT"] == "1" else None
+
+
+events_path = Path(sys.argv[1])
+events = events_path.read_text().splitlines()[-10:] if events_path.is_file() else []
+failure = None
+if Path(events_path.parent, "failure-code.txt").is_file():
+    failure = {
+        "code": os.environ["KANT_JSON_FAILURE_CODE"],
+        "message": optional("KANT_JSON_FAILURE_MESSAGE"),
+    }
+
+json.dump(
+    {
+        "run_id": os.environ["KANT_JSON_RUN_ID"],
+        "result": os.environ["KANT_JSON_RESULT"],
+        "branch": optional("KANT_JSON_BRANCH"),
+        "worktree": optional("KANT_JSON_WORKTREE"),
+        "commit": optional("KANT_JSON_COMMIT"),
+        "failure": failure,
+        "recent_events": events,
+    },
+    sys.stdout,
+    ensure_ascii=False,
+    indent=2,
+)
+sys.stdout.write("\n")
+PY
+    exit 0
   fi
 
   echo "run_id: $target"
@@ -1015,7 +1082,18 @@ cmd_status() {
 # ---------------------------------------------------------------------------
 
 cmd_report() {
-  local run_id="${1:-}"
+  local json_output=0
+  local -a report_args=()
+  while [ $# -gt 0 ]; do
+    if [ "$1" = "--json" ]; then
+      json_output=1
+    else
+      report_args+=("$1")
+    fi
+    shift
+  done
+
+  local run_id="${report_args[0]:-}"
   local rh
   rh="$(repo_hash)"
   local state_dir="$STATE_ROOT/$rh/$run_id"
@@ -1023,6 +1101,77 @@ cmd_report() {
   if [ ! -d "$state_dir" ]; then
     echo "run not found: $run_id"
     exit 1
+  fi
+
+  if [ "$json_output" = "1" ]; then
+    local result branch="" worktree="" commit_sha="" reviewed_tree="" committed_tree=""
+    local failure_code="" failure_message="" promote_command
+    local branch_present=0 worktree_present=0 commit_sha_present=0 reviewed_tree_present=0 committed_tree_present=0
+    local failure_message_present=0
+    result="$(cat "$state_dir/result.txt" 2>/dev/null || echo "running")"
+    if [ -f "$state_dir/branch.txt" ]; then branch="$(cat "$state_dir/branch.txt")"; branch_present=1; fi
+    if [ -f "$state_dir/worktree.txt" ]; then worktree="$(cat "$state_dir/worktree.txt")"; worktree_present=1; fi
+    if [ -f "$state_dir/commit-sha.txt" ]; then commit_sha="$(cat "$state_dir/commit-sha.txt")"; commit_sha_present=1; fi
+    if [ -f "$state_dir/reviewed-tree-sha.txt" ]; then reviewed_tree="$(cat "$state_dir/reviewed-tree-sha.txt")"; reviewed_tree_present=1; fi
+    if [ -f "$state_dir/committed-tree-sha.txt" ]; then committed_tree="$(cat "$state_dir/committed-tree-sha.txt")"; committed_tree_present=1; fi
+    if [ -f "$state_dir/failure-code.txt" ]; then failure_code="$(cat "$state_dir/failure-code.txt")"; fi
+    if [ -f "$state_dir/failure-message.txt" ]; then failure_message="$(cat "$state_dir/failure-message.txt")"; failure_message_present=1; fi
+    if [ "$branch_present" = "1" ]; then
+      promote_command="$SCRIPT_DIR/kant-loop.sh promote $branch --target main"
+    else
+      promote_command="$SCRIPT_DIR/kant-loop.sh promote <branch> --target main"
+    fi
+
+    KANT_JSON_RUN_ID="$run_id" \
+    KANT_JSON_RESULT="$result" \
+    KANT_JSON_BRANCH="$branch" KANT_JSON_BRANCH_PRESENT="$branch_present" \
+    KANT_JSON_WORKTREE="$worktree" KANT_JSON_WORKTREE_PRESENT="$worktree_present" \
+    KANT_JSON_COMMIT_SHA="$commit_sha" KANT_JSON_COMMIT_SHA_PRESENT="$commit_sha_present" \
+    KANT_JSON_REVIEWED_TREE="$reviewed_tree" KANT_JSON_REVIEWED_TREE_PRESENT="$reviewed_tree_present" \
+    KANT_JSON_COMMITTED_TREE="$committed_tree" KANT_JSON_COMMITTED_TREE_PRESENT="$committed_tree_present" \
+    KANT_JSON_FAILURE_CODE="$failure_code" \
+    KANT_JSON_FAILURE_MESSAGE="$failure_message" KANT_JSON_FAILURE_MESSAGE_PRESENT="$failure_message_present" \
+    KANT_JSON_PROMOTE_COMMAND="$promote_command" \
+    python3 - "$state_dir/safety.log" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+
+def optional(name):
+    return os.environ[name] if os.environ[f"{name}_PRESENT"] == "1" else None
+
+
+safety_path = Path(sys.argv[1])
+safety_log = safety_path.read_text().splitlines()[:10] if safety_path.is_file() else []
+failure = None
+if Path(safety_path.parent, "failure-code.txt").is_file():
+    failure = {
+        "code": os.environ["KANT_JSON_FAILURE_CODE"],
+        "message": optional("KANT_JSON_FAILURE_MESSAGE"),
+    }
+
+json.dump(
+    {
+        "run_id": os.environ["KANT_JSON_RUN_ID"],
+        "result": os.environ["KANT_JSON_RESULT"],
+        "branch": optional("KANT_JSON_BRANCH"),
+        "worktree": optional("KANT_JSON_WORKTREE"),
+        "commit_sha": optional("KANT_JSON_COMMIT_SHA"),
+        "reviewed_tree": optional("KANT_JSON_REVIEWED_TREE"),
+        "committed_tree": optional("KANT_JSON_COMMITTED_TREE"),
+        "failure": failure,
+        "safety_log": safety_log,
+        "promote_command": os.environ["KANT_JSON_PROMOTE_COMMAND"],
+    },
+    sys.stdout,
+    ensure_ascii=False,
+    indent=2,
+)
+sys.stdout.write("\n")
+PY
+    exit 0
   fi
 
   cat <<EOF
