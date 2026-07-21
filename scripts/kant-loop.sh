@@ -784,6 +784,8 @@ cmd_run() {
     log "chain specified: $agent_chain"
   fi
 
+  validate_task_md "$task_md"
+
   if [ "$dry_run" = "1" ]; then
     local effective_route
     if [ -n "$agent_chain" ]; then
@@ -811,8 +813,6 @@ cmd_run() {
     echo "  branch: $BRANCH_PREFIX/$run_id"
     exit 0
   fi
-
-  validate_task_md "$task_md"
 
   local slug
   slug="$(task_to_slug "$task_md")"

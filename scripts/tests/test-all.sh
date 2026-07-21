@@ -31,6 +31,9 @@ TESTS=(
   "bash scripts/tests/test-detached-terminal-state.sh"
   "bash scripts/tests/test-chain-result-race.sh"
   "bash scripts/tests/test-status-report-json.sh"
+  "bash scripts/tests/runtime-conformance/check-direct-routing.sh"
+  "bash scripts/tests/runtime-conformance/check-task-contract.sh"
+  "bash scripts/tests/runtime-conformance/check-safety-contract.sh"
 )
 
 LABELS=(
@@ -52,6 +55,9 @@ LABELS=(
   "detached terminal-state fallback"
   "chain result.txt race (2026-07-19 버그 회귀 방지)"
   "status/report --json 출력"
+  "conformance: 직접 라우팅"
+  "conformance: TASK 계약 강제"
+  "conformance: 안전 경계"
 )
 
 # e2e 테스트는 격리 환경 의존성 (full SKILL) — 경고만 표시
