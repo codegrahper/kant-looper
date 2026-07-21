@@ -607,7 +607,7 @@ EOF
     (
       local adapter="$ADAPTERS_DIR/adapter-${tool}.sh"
       if [ -x "$adapter" ]; then
-        "$adapter" call "review-$slice_id" "$prompt_file" "$worktree" "$model" \
+        "$adapter" call "review" "$prompt_file" "$worktree" "$model" \
           > "$parallel_dir/result-review-$slice_id.txt" 2>&1
         echo $? > "$parallel_dir/exit-review-$slice_id.txt"
       else
