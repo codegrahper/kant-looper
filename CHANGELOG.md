@@ -18,6 +18,17 @@ v0.6.0("몸통이 없다")의 agent-agnostic 선언을 **검증 가능한 계약
 위임 → diff·테스트 직접 검증 → dev 반영. 워커 커밋에 섞인 `.kant-looper/` 실행
 로그는 매번 제외하고 의도한 파일만 반영.
 
+> **🔁 이 릴리스의 상징적 순간 — 칸트루퍼가 자기 버그를 잡다.**
+> Stage 3에서 codex(워커)가 자신이 방금 작성한 conformance 스위트를 돌리다,
+> 백엔드의 실제 계약 위반을 발견했다 — `cmd_run`의 `--dry-run` 분기가
+> `validate_task_md`보다 먼저 `exit 0` 하여 "목표 섹션 없는 TASK는 거부된다"는
+> 계약이 dry-run 경로에서 깨져 있었다. codex는 이를 임의로 고치지 않고(수정
+> 범위 밖) 정직하게 `CHANGES_REQUESTED`로 보고했고, 칸트(감독자)가 갭을
+> 수리했다. **테스트는 수리 전엔 실패(2 FAIL)하고 수리 후 통과(4 PASS)** —
+> conformance 스위트가 껍데기가 아니라 실제로 계약 위반을 잡아낸다는 증명이다.
+> AI가 만든 검증 도구가 AI가 만든 코드의 결함을 잡고, 인간이 승인한 원칙 아래
+> 다른 AI가 고친 — Nomad Kant Looper가 지향하는 "검증 가능한 자율"의 실제 사례.
+
 ### Host Contract v1 (Stage 1, 워커: codex:gpt-5.6-sol)
 
 - **`platform/HOST-CONTRACT.md` 신설** (`e5d0235`): Meta Agent Host가 되기 위한
