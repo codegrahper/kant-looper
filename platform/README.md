@@ -47,6 +47,22 @@ Nomad Kant Looper에는 서로 직교하는 두 축이 있다. 이 둘을 섞으
 
 이 분리는 향후 단계에서 다시 검토된다.
 
+### Stage 4 관측 기반 결정 — frontmatter 이식성 (2026-07-21)
+
+**결정:** `user-invocable`과 `allowed-tools`를 `SKILL.md` frontmatter에
+**그대로 유지**한다. wrapper 분리나 런타임별 config 생성 시스템은 만들지
+않는다.
+
+**근거:** 이번 세션(Stage 4)에서 세 런타임 — Claude Code, Codex, OpenCode —
+모두 Claude Code 전용 frontmatter 필드(`user-invocable`, `allowed-tools`)가
+들어 있는 **동일한 `SKILL.md`**를 로드하고 정상 실행함이 관측됐다. 다른
+런타임은 인식하지 못하는 필드를 안전하게 무시하므로, canonical `SKILL.md`
+하나를 유지하는 방식이 실제로 작동한다.
+
+**단서:** 향후 어떤 런타임이 unknown frontmatter 필드로 인해 스킬 로드에
+실패하는 사례가 **실제로** 관측되면 그 시점에 재검토한다. 지금은 사전
+방어적으로 config generation 시스템을 만들지 않는다(YAGNI).
+
 ### Codex 전용 메타데이터
 
 Codex 전용 인터페이스 메타데이터는 **이미 `agents/openai.yaml`(저장소 루트)이
