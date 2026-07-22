@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kant Dashboard - Bento Grid Layout</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f3f4f6;
+    --card-bg: #ffffff;
+    --text: #1f2937;
+    --text-sub: #6b7280;
+    --border: #e5e7eb;
+    --radius: 12px;
+    
+    --c-success: #10b981;
+    --c-running: #0ea5e9;
+    --c-failed: #ef4444;
+    --c-waiting: #9ca3af;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #030712;
+      --card-bg: #111827;
+      --text: #f9fafb;
+      --text-sub: #9ca3af;
+      --border: #1f2937;
+      
+      --c-success: #34d399;
+      --c-running: #38bdf8;
+      --c-failed: #f87171;
+      --c-waiting: #6b7280;
+    }
+  }
+
+  body { margin: 0; padding: 1.5rem; font-family: "Inter", system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); height: 100vh; box-sizing: border-box; }
+  
+  .dashboard { display: grid; grid-template-columns: 320px 1fr 320px; grid-template-rows: auto 1fr; gap: 1.5rem; height: 100%; }
+  
+  .card { background: var(--card-bg); border-radius: var(--radius); border: 1px solid var(--border); padding: 1.5rem; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+  .card h2 { margin: 0 0 1.25rem 0; font-size: 1.05rem; color: var(--text); display: flex; justify-content: space-between; align-items: center; }
+  
+  /* Top Bar */
+  .top-bar { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; padding: 1.25rem 1.5rem; background: var(--card-bg); border-radius: var(--radius); border: 1px solid var(--border); box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+  .top-bar h1 { margin: 0; font-size: 1.3rem; }
+  
+  /* Run List */
+  .run-list { grid-column: 1; grid-row: 2; overflow-y: auto; padding: 1rem; }
+  .run-entry { padding: 1.25rem; border-radius: 8px; margin-bottom: 0.75rem; border: 1px solid var(--border); cursor: pointer; transition: all 0.2s; }
+  .run-entry:hover { background: var(--bg); }
+  .run-entry.active { border-color: var(--c-running); background: #0ea5e90a; }
+  .run-entry h3 { margin: 0 0 0.5rem 0; font-size: 0.95rem; }
+  .run-entry p { margin: 0; font-size: 0.8rem; color: var(--text-sub); display: flex; justify-content: space-between; }
+  
+  /* Pipeline Center */
+  .pipeline-view { grid-column: 2; grid-row: 2; }
+  .pipeline-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+  .step-box { padding: 1.25rem 1rem; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); text-align: center; font-size: 0.9rem; font-weight: 500; }
+  .step-box.success { border-color: var(--c-success); color: var(--c-success); background: #10b9810a; }
+  .step-box.running { border-color: var(--c-running); color: var(--c-running); background: #0ea5e90a; border-width: 2px; }
+  .step-box.waiting { color: var(--text-sub); opacity: 0.7; }
+  .step-icon { font-size: 1.25rem; margin-bottom: 0.5rem; display: block; }
+  
+  /* Activity Log */
+  .activity-log { flex: 1; overflow-y: auto; margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1rem; }
+  .log-line { font-family: ui-monospace, monospace; font-size: 0.85rem; padding: 0.5rem 0; border-bottom: 1px dashed var(--border); display: flex; gap: 1rem; }
+  .log-line .ts { width: 80px; color: var(--text-sub); }
+  .log-line .event { width: 140px; font-weight: 600; color: var(--c-running); }
+  .log-line .msg { color: var(--text); }
+  
+  /* Inspector */
+  .inspector { grid-column: 3; grid-row: 2; }
+  .info-group { margin-bottom: 1.5rem; }
+  .info-group label { display: block; font-size: 0.75rem; text-transform: uppercase; color: var(--text-sub); margin-bottom: 0.5rem; letter-spacing: 0.05em; font-weight: 600; }
+  .info-group .value { font-size: 0.95rem; background: var(--bg); padding: 0.85rem; border-radius: 8px; border: 1px solid var(--border); }
+  .verdict-tag { display: inline-block; padding: 0.25rem 0.6rem; border-radius: 6px; font-size: 0.75rem; font-weight: bold; background: var(--c-running); color: white; }
+</style>
+</head>
+<body>
+  <div class="dashboard">
+    <div class="top-bar">
+      <h1>Kant Dashboard</h1>
+      <div style="font-size: 0.9rem; color: var(--text-sub); display: flex; gap: 2rem;">
+        <span><strong>Task:</strong> Implement authentication</span>
+        <span><strong>ID:</strong> login-20260722-214201</span>
+        <span><strong>Branch:</strong> agent/kant/login-123</span>
+      </div>
+    </div>
+    
+    <div class="card run-list">
+      <h2>Recent Runs</h2>
+      <div class="run-entry active">
+        <h3>Implement authentication</h3>
+        <p><span style="color: var(--c-running)">● Running</span> <span>Stage 5/8</span></p>
+      </div>
+      <div class="run-entry">
+        <h3>Fix layout issues</h3>
+        <p><span style="color: var(--c-success)">● Success</span> <span>Stage 8/8</span></p>
+      </div>
+      <div class="run-entry">
+        <h3>Update dependencies</h3>
+        <p><span style="color: var(--c-failed)">● Failed</span> <span>Stage 2/8</span></p>
+      </div>
+    </div>
+    
+    <div class="card pipeline-view">
+      <h2>Pipeline Status <span style="font-size: 0.9rem; font-weight: normal; color: var(--text-sub); background: var(--bg); padding: 0.2rem 0.6rem; border-radius: 99px;">5/8 stages completed</span></h2>
+      <div class="pipeline-steps">
+        <div class="step-box success"><span class="step-icon">✓</span>preflight</div>
+        <div class="step-box success"><span class="step-icon">✓</span>worktree</div>
+        <div class="step-box success"><span class="step-icon">✓</span>plan</div>
+        <div class="step-box success"><span class="step-icon">✓</span>implement</div>
+        <div class="step-box running"><span class="step-icon">↻</span>gate</div>
+        <div class="step-box waiting"><span class="step-icon">○</span>review</div>
+        <div class="step-box waiting"><span class="step-icon">○</span>repair</div>
+        <div class="step-box waiting"><span class="step-icon">○</span>commit</div>
+      </div>
+      
+      <h2 style="margin-top: 1rem;">Activity Feed</h2>
+      <div class="activity-log">
+        <div class="log-line"><span class="ts">21:42:01</span><span class="event">run_created</span><span class="msg">Run initialized for task</span></div>
+        <div class="log-line"><span class="ts">21:42:05</span><span class="event">agent_started</span><span class="msg">[implement] codex (gpt-5.6-sol)</span></div>
+        <div class="log-line"><span class="ts">21:44:10</span><span class="event">agent_completed</span><span class="msg">[implement] PASS</span></div>
+        <div class="log-line"><span class="ts">21:44:12</span><span class="event">agent_started</span><span class="msg">[gate] safety_checker</span></div>
+      </div>
+    </div>
+    
+    <div class="card inspector">
+      <h2>Inspector</h2>
+      <div class="info-group">
+        <label>Current Stage</label>
+        <div class="value" style="display: flex; justify-content: space-between; align-items: center;">
+          <strong style="color: var(--text)">gate</strong>
+          <span class="verdict-tag">RUNNING</span>
+        </div>
+      </div>
+      <div class="info-group">
+        <label>Active Agent</label>
+        <div class="value">
+          <div style="font-weight: 500; margin-bottom: 0.25rem;">safety_checker</div>
+          <div style="font-size: 0.8rem; color: var(--text-sub);">rule-engine-v1</div>
+        </div>
+      </div>
+      <div class="info-group">
+        <label>Findings</label>
+        <div class="value">0 findings detected</div>
+      </div>
+      <div class="info-group">
+        <label>Risks</label>
+        <div class="value">0 risks detected</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

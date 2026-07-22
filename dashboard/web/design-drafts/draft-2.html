@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kant Dashboard - Kanban Layout</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #eff6ff;
+    --surface: #ffffff;
+    --text: #0f172a;
+    --text-light: #64748b;
+    --border: #cbd5e1;
+    
+    --c-waiting: #94a3b8;
+    --c-running: #2563eb;
+    --c-success: #16a34a;
+    --c-failed: #dc2626;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --text: #f8fafc;
+      --text-light: #94a3b8;
+      --border: #334155;
+      
+      --c-waiting: #64748b;
+      --c-running: #3b82f6;
+      --c-success: #22c55e;
+      --c-failed: #ef4444;
+    }
+  }
+
+  body { margin: 0; font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
+  
+  .navbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+  .brand { font-size: 1.2rem; font-weight: bold; }
+  .run-selector { display: flex; align-items: center; gap: 1rem; }
+  .run-selector select { padding: 0.5rem 1rem; font-size: 0.95rem; border-radius: 0.5rem; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-weight: 500; outline: none; }
+  .global-status { font-size: 0.85rem; font-weight: 600; padding: 0.35rem 0.75rem; border-radius: 99px; background: #2563eb22; color: var(--c-running); }
+  
+  .run-details-bar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0.75rem 2rem; font-size: 0.85rem; color: var(--text-light); display: flex; gap: 2rem; }
+  .run-details-bar strong { color: var(--text); }
+  
+  .board { flex: 1; overflow-x: auto; padding: 2rem; display: flex; gap: 1.5rem; align-items: flex-start; }
+  
+  .column { width: 280px; flex-shrink: 0; background: var(--surface); border-radius: 0.5rem; border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+  .column-header { padding: 1rem; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 0.95rem; background: var(--bg); display: flex; justify-content: space-between; align-items: center; }
+  .column-body { padding: 1rem; display: flex; flex-direction: column; gap: 1rem; min-height: 80px; }
+  
+  .agent-card { background: var(--bg); border: 1px solid var(--border); border-radius: 0.5rem; padding: 1rem; cursor: pointer; transition: transform 0.1s; }
+  .agent-card:hover { transform: translateY(-2px); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+  .agent-card.success { border-left: 4px solid var(--c-success); }
+  .agent-card.failed { border-left: 4px solid var(--c-failed); }
+  .agent-card.running { border-left: 4px solid var(--c-running); }
+  .agent-header { display: flex; justify-content: space-between; margin-bottom: 0.5rem; align-items: flex-start; }
+  .agent-name { font-weight: bold; font-size: 0.95rem; }
+  .agent-model { font-size: 0.75rem; color: var(--text-light); margin-top: 0.25rem; display: block; }
+  .verdict { font-size: 0.8rem; font-weight: 600; margin-top: 1rem; display: flex; justify-content: space-between; align-items: center;}
+  
+  .inspector-drawer { height: 250px; background: var(--surface); border-top: 1px solid var(--border); display: flex; }
+  .activity-log { flex: 1; padding: 1rem 2rem; overflow-y: auto; border-right: 1px solid var(--border); }
+  .activity-log h3 { margin-top: 0; font-size: 0.95rem; margin-bottom: 1rem; }
+  .log { font-family: monospace; font-size: 0.85rem; padding: 0.25rem 0; color: var(--text-light); display: flex; gap: 1.5rem; }
+  .log .time { width: 70px; }
+  .log .type { width: 150px; font-weight: bold; color: var(--c-running); }
+  
+  .side-inspector { width: 400px; padding: 1rem 2rem; overflow-y: auto; }
+  .side-inspector h3 { margin-top: 0; font-size: 0.95rem; margin-bottom: 1rem; }
+  .inspector-stat { display: flex; justify-content: space-between; font-size: 0.85rem; padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
+  .inspector-stat:last-child { border: none; }
+  .inspector-stat .label { color: var(--text-light); }
+  .inspector-stat .val { font-weight: 500; }
+</style>
+</head>
+<body>
+  <div class="navbar">
+    <div class="brand">Kant Dashboard</div>
+    <div class="run-selector">
+      <select>
+        <option>Implement authentication</option>
+        <option>Fix UI layout issues</option>
+      </select>
+      <span class="global-status">● Running (Stage 5/8)</span>
+    </div>
+  </div>
+  
+  <div class="run-details-bar">
+    <span><strong>ID:</strong> login-20260722-214201</span>
+    <span><strong>Branch:</strong> agent/kant/login-123</span>
+    <span><strong>Worktree:</strong> /tmp/kant-worktree-123</span>
+    <span><strong>Started:</strong> 21:42:01</span>
+  </div>
+  
+  <div class="board">
+    <!-- preflight -->
+    <div class="column">
+      <div class="column-header">
+        <span>1. preflight</span>
+        <span style="color: var(--c-success)">✓</span>
+      </div>
+      <div class="column-body">
+        <div class="agent-card success">
+          <div class="agent-header">
+            <div>
+              <span class="agent-name">setup</span>
+              <span class="agent-model">system</span>
+            </div>
+          </div>
+          <div class="verdict">
+            <span style="color: var(--c-success)">PASS</span>
+            <span style="color: var(--text-light)">0 Findings</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- implement -->
+    <div class="column">
+      <div class="column-header">
+        <span>4. implement</span>
+        <span style="color: var(--c-success)">✓</span>
+      </div>
+      <div class="column-body">
+        <div class="agent-card success">
+          <div class="agent-header">
+            <div>
+              <span class="agent-name">codex</span>
+              <span class="agent-model">gpt-5.6-sol</span>
+            </div>
+          </div>
+          <div class="verdict">
+            <span style="color: var(--c-success)">PASS</span>
+            <span style="color: var(--text-light)">2 Findings</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- gate -->
+    <div class="column">
+      <div class="column-header">
+        <span>5. gate</span>
+        <span style="color: var(--c-running)">↻</span>
+      </div>
+      <div class="column-body">
+        <div class="agent-card running">
+          <div class="agent-header">
+            <div>
+              <span class="agent-name">safety_checker</span>
+              <span class="agent-model">rule-engine-v1</span>
+            </div>
+          </div>
+          <div class="verdict">
+            <span style="color: var(--c-running)">RUNNING...</span>
+            <span style="color: var(--text-light)">0 Risks</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- review -->
+    <div class="column" style="opacity: 0.6">
+      <div class="column-header">
+        <span>6. review</span>
+        <span style="color: var(--c-waiting)">○</span>
+      </div>
+      <div class="column-body">
+        <div style="text-align: center; color: var(--text-light); font-size: 0.85rem; padding: 2rem 0;">Waiting for gate...</div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="inspector-drawer">
+    <div class="activity-log">
+      <h3>Activity Stream</h3>
+      <div class="log"><span class="time">21:42:01</span><span class="type">run_created</span><span>Run initialized for task</span></div>
+      <div class="log"><span class="time">21:42:05</span><span class="type">agent_started</span><span>[implement] codex (gpt-5.6-sol) started</span></div>
+      <div class="log"><span class="time">21:44:10</span><span class="type">agent_completed</span><span>[implement] codex completed with PASS</span></div>
+      <div class="log"><span class="time">21:44:12</span><span class="type">agent_started</span><span>[gate] safety_checker started</span></div>
+    </div>
+    <div class="side-inspector">
+      <h3>Selected: gate (safety_checker)</h3>
+      <div class="inspector-stat">
+        <span class="label">Status</span>
+        <span class="val" style="color: var(--c-running)">RUNNING</span>
+      </div>
+      <div class="inspector-stat">
+        <span class="label">Model</span>
+        <span class="val">rule-engine-v1</span>
+      </div>
+      <div class="inspector-stat">
+        <span class="label">Findings</span>
+        <span class="val">0</span>
+      </div>
+      <div class="inspector-stat">
+        <span class="label">Risks</span>
+        <span class="val">0</span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kant Dashboard - Classic IDE Layout</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg-base: #f9fafb;
+    --bg-surface: #ffffff;
+    --bg-surface-hover: #f3f4f6;
+    --text-main: #111827;
+    --text-muted: #6b7280;
+    --border: #e5e7eb;
+    
+    --c-waiting: #9ca3af;
+    --c-running: #3b82f6;
+    --c-success: #10b981;
+    --c-warning: #f59e0b;
+    --c-failed: #ef4444;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg-base: #111827;
+      --bg-surface: #1f2937;
+      --bg-surface-hover: #374151;
+      --text-main: #f9fafb;
+      --text-muted: #9ca3af;
+      --border: #374151;
+      
+      --c-waiting: #6b7280;
+      --c-running: #60a5fa;
+      --c-success: #34d399;
+      --c-warning: #fbbf24;
+      --c-failed: #f87171;
+    }
+  }
+
+  body { margin: 0; font-family: system-ui, sans-serif; background: var(--bg-base); color: var(--text-main); display: flex; height: 100vh; overflow: hidden; }
+  
+  .sidebar { width: 300px; border-right: 1px solid var(--border); background: var(--bg-surface); display: flex; flex-direction: column; }
+  .sidebar-header { padding: 1.25rem 1rem; border-bottom: 1px solid var(--border); font-weight: bold; font-size: 1.1rem; }
+  .run-list { flex: 1; overflow-y: auto; }
+  .run-item { padding: 1rem; border-bottom: 1px solid var(--border); cursor: pointer; display: flex; flex-direction: column; gap: 0.35rem; }
+  .run-item:hover { background: var(--bg-surface-hover); }
+  .run-item.active { border-left: 4px solid var(--c-running); background: var(--bg-surface-hover); }
+  .run-title { font-weight: 500; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .run-meta { font-size: 0.8rem; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; }
+  
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+  .bg-running { background: var(--c-running); }
+  .bg-success { background: var(--c-success); }
+  .bg-failed { background: var(--c-failed); }
+  
+  .main-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  
+  .header { padding: 1.5rem; border-bottom: 1px solid var(--border); background: var(--bg-surface); }
+  .header h1 { margin: 0 0 0.5rem 0; font-size: 1.4rem; }
+  .header-meta { font-size: 0.85rem; color: var(--text-muted); display: flex; gap: 1.5rem; }
+  
+  .pipeline-area { padding: 1.5rem; border-bottom: 1px solid var(--border); background: var(--bg-surface); }
+  .pipeline-header { display: flex; justify-content: space-between; margin-bottom: 1.25rem; font-weight: 600; font-size: 1rem; }
+  .stages { display: flex; gap: 0.75rem; align-items: center; overflow-x: auto; padding-bottom: 0.5rem; }
+  .stage { padding: 0.5rem 1.25rem; border: 1px solid var(--border); border-radius: 99px; font-size: 0.85rem; font-weight: 500; display: flex; align-items: center; gap: 0.5rem; background: var(--bg-base); }
+  .stage.running { border-color: var(--c-running); color: var(--c-running); background: var(--bg-surface); box-shadow: 0 0 0 1px var(--c-running); }
+  .stage.success { border-color: var(--c-success); color: var(--c-success); }
+  .stage.failed { border-color: var(--c-failed); color: var(--c-failed); }
+  .stage.waiting { border-color: var(--border); color: var(--text-muted); }
+  
+  .activity-area { flex: 1; padding: 1.5rem; overflow-y: auto; background: var(--bg-base); }
+  .activity-area h3 { margin-top: 0; font-size: 1rem; margin-bottom: 1rem; }
+  .log-entry { font-family: ui-monospace, monospace; font-size: 0.85rem; padding: 0.35rem 0; display: flex; gap: 1rem; border-bottom: 1px dashed var(--border); }
+  .log-time { width: 75px; color: var(--text-muted); }
+  .log-type { width: 160px; font-weight: 600; color: var(--text-main); }
+  .log-msg { color: var(--text-muted); }
+  
+  .inspector { width: 320px; border-left: 1px solid var(--border); background: var(--bg-surface); display: flex; flex-direction: column; }
+  .inspector-header { padding: 1.25rem 1rem; border-bottom: 1px solid var(--border); font-weight: bold; font-size: 1.1rem; }
+  .inspector-content { padding: 1.5rem 1rem; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 1.25rem; }
+  .card { border: 1px solid var(--border); border-radius: 0.5rem; padding: 1rem; background: var(--bg-base); }
+  .card-title { font-weight: 600; font-size: 0.9rem; margin-bottom: 0.75rem; display: flex; justify-content: space-between; align-items: center; }
+  .card-value { font-size: 0.85rem; color: var(--text-muted); }
+  .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 99px; font-size: 0.75rem; font-weight: 700; }
+  .badge.running { background: #3b82f622; color: var(--c-running); }
+</style>
+</head>
+<body>
+  <div class="sidebar">
+    <div class="sidebar-header">Runs</div>
+    <div class="run-list">
+      <div class="run-item active">
+        <div class="run-title">Implement authentication</div>
+        <div class="run-meta">
+          <span><i class="status-dot bg-running"></i> Running</span>
+          <span>Stage 5/8</span>
+        </div>
+      </div>
+      <div class="run-item">
+        <div class="run-title">Fix UI layout issues in header</div>
+        <div class="run-meta">
+          <span><i class="status-dot bg-success"></i> Success</span>
+          <span>Done</span>
+        </div>
+      </div>
+      <div class="run-item">
+        <div class="run-title">Update dependencies</div>
+        <div class="run-meta">
+          <span><i class="status-dot bg-failed"></i> Failed</span>
+          <span>Stage 2/8</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="main-area">
+    <div class="header">
+      <h1>Task: Implement authentication</h1>
+      <div class="header-meta">
+        <span>ID: login-20260722-214201</span>
+        <span>Branch: agent/kant/login-123</span>
+        <span>Worktree: /tmp/kant-worktree-123</span>
+      </div>
+    </div>
+    
+    <div class="pipeline-area">
+      <div class="pipeline-header">
+        <span>Pipeline Progress</span>
+        <span>5/8 stages</span>
+      </div>
+      <div class="stages">
+        <div class="stage success">✓ preflight</div>
+        <div class="stage success">✓ worktree</div>
+        <div class="stage success">✓ plan</div>
+        <div class="stage success">✓ implement</div>
+        <div class="stage running">↻ gate</div>
+        <div class="stage waiting">○ review</div>
+        <div class="stage waiting">○ repair</div>
+        <div class="stage waiting">○ verify</div>
+      </div>
+    </div>
+    
+    <div class="activity-area">
+      <h3>Activity Stream</h3>
+      <div class="log-entry">
+        <div class="log-time">21:42:01</div>
+        <div class="log-type">run_created</div>
+        <div class="log-msg">Run initialized for task</div>
+      </div>
+      <div class="log-entry">
+        <div class="log-time">21:42:05</div>
+        <div class="log-type">agent_started</div>
+        <div class="log-msg">[implement] codex (gpt-5.6-sol) started</div>
+      </div>
+      <div class="log-entry">
+        <div class="log-time">21:44:10</div>
+        <div class="log-type">agent_completed</div>
+        <div class="log-msg">[implement] codex completed with PASS</div>
+      </div>
+      <div class="log-entry">
+        <div class="log-time">21:44:12</div>
+        <div class="log-type">agent_started</div>
+        <div class="log-msg">[gate] safety_checker started</div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="inspector">
+    <div class="inspector-header">Inspector</div>
+    <div class="inspector-content">
+      <div class="card">
+        <div class="card-title">
+          <span>gate stage</span>
+          <span class="badge running">RUNNING</span>
+        </div>
+        <div class="card-value" style="margin-bottom: 0.5rem;">Agent: safety_checker</div>
+        <div class="card-value">Model: rule-engine-v1</div>
+      </div>
+      
+      <div class="card">
+        <div class="card-title">Verdict</div>
+        <div class="card-value">Pending evaluation...</div>
+      </div>
+      
+      <div class="card">
+        <div class="card-title">Findings (0)</div>
+        <div class="card-value">No findings yet.</div>
+      </div>
+      
+      <div class="card">
+        <div class="card-title">Risks (0)</div>
+        <div class="card-value">No risks identified.</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
