@@ -1,67 +1,50 @@
-[2026-07-23T02:03:51Z] run_with_timeout start
-[2026-07-23T02:03:51Z] timeout=1800s
-[2026-07-23T02:03:51Z] prompt: [prompt omitted: 7808 chars]
-[2026-07-23T02:03:51Z] cmd: agy -p # Task
+[2026-07-23T02:42:26Z] run_with_timeout start
+[2026-07-23T02:42:26Z] timeout=1800s
+[2026-07-23T02:42:26Z] prompt: [prompt omitted: 4409 chars]
+[2026-07-23T02:42:26Z] cmd: agy -p # Task
 
 ## 목표
-Kant Dashboard Phase 3 — Read-only Dashboard MVP를 구현한다. `dashboard/web/design-drafts/draft-4.html`을 시각적 기반으로 삼아 실제 `dashboard/server`(FastAPI) API와 연동하는 `dashboard/web/index.html`을 만든다. 터미널에서 `kant-loop.sh run`으로 실행한 run을 Dashboard가 자동으로 감지하고 실시간으로 보여줘야 한다. Dashboard에서 직접 run을 실행하는 기능은 이번 범위가 아니다(Phase 4).
+`dashboard/web/index.html`의 3컬럼 레이아웃(좌 Runs 사이드바 / 중앙 Pipeline+Activity / 우 Inspector)이 좁은 브라우저 창에서 깨지는 반응형 버그를 고친다.
 
-## 배경 / 참고 자료
-- 시각적 기반: `dashboard/web/design-drafts/draft-4.html` (draft-2의 인라인 정보 밀도 + draft-3의 카드 톤을 합친 확정 시안)
-- API 계약: `docs/dashboard/API.md`, 실제 구현은 `dashboard/server/main.py` (`GET /api/health`, `GET /api/runs`, `GET /api/runs/{run_id}`, `GET /api/runs/{run_id}/events`, `GET /api/runs/{run_id}/stream` — SSE)
-- 데이터 스키마: `docs/dashboard/STATE-CONTRACT.md` — `run-state.json`의 `status`/`stage` enum, `agents[]` 배열(가변 길이), `events.jsonl`의 `type` 종류.
-- UI 정보 구조: `docs/dashboard/UI-SCOPE.md`
+## 문제 재현 (직접 확인된 사실)
+브라우저 뷰포트를 723px 폭으로 줄이면:
+- "Pipeline Status" 제목이 "Pip Sta"로 잘린다.
+- "Activity Feed" 제목이 "Act Fee"로 잘린다.
+- 중앙 컬럼과 우측 Inspector 컬럼이 겹쳐서 우측 컬럼 내용이 안 보인다.
+- `document.documentElement.scrollWidth`(762px)가 `window.innerWidth`(723px)보다 커서 가로 콘텐츠가 넘친다.
 
-## 사용자 리뷰에서 나온 수정사항 (반드시 반영)
-draft-2/draft-4를 이바가 직접 검토하며 지적한 두 가지 문제를 이번 구현에서 고친다.
-
-1. **Inspector 패널과 파이프라인 카드의 정보 중복 제거.** draft-4는 카드 자체에 agent/model/verdict/findings가 이미 인라인으로 보이는데, 우측 Inspector가 현재 stage와 똑같은 내용을 그대로 반복 표시했다. Inspector는 "선택한 stage를 더 깊이 파고들 때"(예: findings 상세 목록, risks 상세, events.jsonl에서 해당 stage 구간 로그)만 값어치가 있어야 한다. 기본 상태에서 카드와 동일한 요약을 또 보여주지 않는다.
-2. **`system`(엔진이 직접 처리하는 단계: preflight/worktree/commit 등, `agents[]`에 해당 항목이 없는 단계)과 실제 AI 도구가 실행되는 단계(`agents[]`에 tool/model이 있는 단계: implement/gate/review/repair 등)를 시각적으로 구분한다.** 지금처럼 둘 다 같은 카드 스타일에 "system"이라는 문자열만 다르게 넣는 방식은 AI가 일하는 단계와 엔진이 처리하는 단계가 구분이 안 된다.
+1440px 폭에서는 완전히 정상 작동한다(3컬럼이 깔끔하게 배치되고 텍스트가 안 잘림). 즉 현재 CSS는 좌측 320px + 중앙 704px + 우측 320px + 여백 등 고정폭 합이 대략 1400px 이상을 요구하는데, 그보다 좁은 뷰포트에 대한 반응형 breakpoint가 전혀 없다.
 
 ## 작업 내용
-1. `dashboard/server/main.py`를 읽고 기존 API 엔드포인트 구조를 파악한다.
-2. `dashboard/web/index.html`을 만든다 — 빌드 스텝 없음, 단일 HTML 파일(내부에 `<style>`/`<script>` 포함), 외부 CDN·의존성 없음.
-3. mock 데이터가 아니라 실제 API를 호출한다:
-   - 최초 로드 시 `GET /api/runs`로 목록을 가져와 좌측 사이드바(Runs)를 채우고, 가장 최근 run을 기본 선택한다.
-   - 선택된 run은 `GET /api/runs/{run_id}`로 상세를 가져와 파이프라인/헤더를 그린다.
-   - Activity는 `GET /api/runs/{run_id}/stream`(SSE, `EventSource`)로 실시간 갱신한다. 연결 실패 시 `GET /api/runs/{run_id}/events`로 폴백한다.
-   - `run-state.json`이 없는 run(구버전 run, degrade 응답)은 목록에서 "레거시" 처럼 구분 표시하고 죽지 않는다.
-4. 파이프라인 카드는 **`agents[]` 배열 길이만큼 동적으로 렌더링한다** — draft-4처럼 8칸을 하드코딩하지 않는다. `agents[]`에 없는 고정 처리 단계(예: preflight/worktree/commit)는 실제 `events.jsonl`에 해당 이벤트가 있을 때만 표시하거나, 위 "수정사항 2"에 따라 별도 스타일(더 얇고 조용한 카드 등)로 그린다.
-5. Inspector는 기본적으로 "선택된 stage의 events.jsonl 로그"나 "findings/risks 상세"처럼 카드에 없는 추가 정보를 보여준다. 카드와 완전히 동일한 필드(agent/model/verdict 한 줄 요약)를 그대로 복제하지 않는다.
-6. `dashboard/server/main.py`에 정적 파일 서빙을 최소한으로 추가한다 — `dashboard/web/`을 루트(`/`)에 서빙해서 `http://127.0.0.1:7419`로 접속하면 `index.html`이 뜨게 한다. 기존 `/api/*` 엔드포인트 동작은 절대 바꾸지 않는다. 서버는 여전히 `127.0.0.1`에만 bind해야 한다(`config.HOST` 유지).
-7. light/dark mode 유지 (draft-4와 동일하게 `prefers-color-scheme` 또는 토글).
-8. Pipeline 진행 표시는 실제 단계 수 기준(`N/총단계` 등)만 쓴다. 가짜 `%` 진행률 금지.
-9. malformed 응답(서버가 `error` 필드를 준 경우)이나 API 연결 실패 시에도 화면 전체가 깨지지 않고 해당 부분만 에러 상태를 보여준다.
+1. `dashboard/web/index.html`의 현재 CSS 레이아웃(3컬럼 grid/flex 구조)을 확인한다.
+2. 뷰포트가 좁아질 때(대략 1300px 미만) 레이아웃이 깨지지 않도록 반응형 처리를 추가한다. 구체적 구현 방식(컬럼 폭을 유동적으로 줄이기, 좁은 화면에서 컬럼을 세로로 쌓기, min-width 대신 flex-basis/percentage 사용 등)은 구현 에이전트가 판단해서 선택한다 — 다만 아래 조건은 반드시 만족해야 한다.
+3. 어떤 뷰포트 폭에서도 헤더 제목("Pipeline Status", "Activity Feed", "Inspector" 등)이 잘리지 않아야 한다.
+4. 컬럼끼리 겹쳐서 내용이 안 보이는 상태가 없어야 한다.
+5. 넓은 화면(1440px 이상)에서의 기존 레이아웃과 스타일은 그대로 유지한다 — 지금 잘 작동하는 걸 망가뜨리지 않는다.
+6. 기존 기능(실제 API 연동, agents[] 동적 카드 렌더링, Inspector 클릭 인터랙션, system-step 시각적 구분, light/dark mode, N/N stages 표기)은 전혀 건드리지 않는다 — 순수 CSS 레이아웃 수정만 한다.
 
 ## 수정 범위
-- `dashboard/web/index.html` 신규 생성 (메인 산출물).
-- `dashboard/server/main.py`에 정적 파일 서빙 마운트만 최소 추가 (기존 라우트 로직 변경 금지).
-- `dashboard/web/design-drafts/*.html`, `dashboard/server/config.py`, `dashboard/server/services/*`, `dashboard/server/models/*`, `docs/dashboard/*.md`는 읽기만 하고 수정하지 않는다.
+- `dashboard/web/index.html`의 CSS(`<style>` 블록)만 수정한다.
+- JS 로직(`<script>` 블록), API 호출 코드는 수정하지 않는다.
+- `dashboard/server/`, `dashboard/web/design-drafts/`, `docs/dashboard/`는 건드리지 않는다.
 
 ## 유지 조건
-- 기존 nomad-kant-looper 안전 정책을 따른다 (보호 경로 변경 금지, 강제 push/merge 금지 등).
-- 서버는 `127.0.0.1`에만 bind (`0.0.0.0` 금지) — `config.HOST`를 우회하는 코드를 추가하지 않는다.
-- 기존 `GET /api/*` 엔드포인트의 응답 형식·상태 코드를 바꾸지 않는다.
-- Dashboard에서 run을 새로 실행하는 기능(POST 등)은 만들지 않는다 — 이번은 읽기전용이다.
+- 기존 nomad-kant-looper 안전 정책을 따른다.
+- 서버는 `127.0.0.1`에만 bind — 이 작업에서 서버 코드를 건드리지 않으므로 해당 없음.
 
 ## 검증
-- `dashboard/server`를 기동한 뒤(`uvicorn dashboard.server.main:app --host 127.0.0.1 --port 7419`) 브라우저에서 `http://127.0.0.1:7419`로 접속하면 index.html이 뜨는지 확인한다.
-- 실제 존재하는 run_id로 `/api/runs`, `/api/runs/{id}`, `/api/runs/{id}/stream`을 호출했을 때 화면에 반영되는지 확인한다.
-- 존재하지 않는 run이나 malformed 상태에서도 화면이 깨지지 않는지 확인한다.
+- 브라우저 뷰포트를 723px, 1024px, 1440px 세 가지 폭으로 각각 열어서 텍스트 잘림·컬럼 겹침이 없는지 확인한다.
+- 1440px에서 기존 레이아웃(카드 배치, 색상, 클릭 인터랙션)이 이전과 동일하게 유지되는지 확인한다.
 - 콘솔에 JS 에러가 없는지 확인한다.
 
 ## 완료 조건
-- `dashboard/web/index.html`이 존재하고, 실제 API로 run 목록·상세·실시간 이벤트를 표시한다.
-- Inspector와 파이프라인 카드 간 정보 중복이 제거되어 있다.
-- system 처리 단계와 실제 AI 실행 단계가 시각적으로 구분된다.
-- 파이프라인 카드 개수가 `agents[]` 길이에 따라 가변적이다(고정 8칸 하드코딩 없음).
-- light/dark mode 모두 지원하고, 가짜 `%` 진행률이 없다.
-- `http://127.0.0.1:7419`에서 브라우저로 바로 확인 가능하다.
+- 723px~1440px 사이 어떤 폭에서도 제목 텍스트가 잘리지 않고 컬럼이 겹치지 않는다.
+- 1440px 이상에서의 기존 동작·스타일이 그대로 유지된다.
 
 ---
 
 ## 작업 영역 경로 규칙
-Current working directory is your worktree root: /tmp/kant-worktree-26914
+Current working directory is your worktree root: /tmp/kant-worktree-46562
 Use only relative paths. Do not recreate the worktree directory.
 Examples: calculator.py, DONE.md, codex/, opencode/, grok/, agy/
 Forbidden: Desktop/, ~/Desktop/, Users/, C:Agents modify only their own workspace. Do not modify other agent folders.
@@ -92,7 +75,7 @@ implement 역할만 수행하세요.
 ## 중요: 재시도 루프 방지
 - 도구를 실행(tool call)한 직후에도 반드시 위에 정의한 JSON 포맷으로 응답을 출력해야 한다.
 - 도구 실행 후 응답을 출력하지 않고 끝나지 마라. 반드시 JSON과 <verdict> 태그를 포함한 응답을 작성해야 한다.
-- retry loop(재시도 루프)가 발생하지 않도록, 한 번의 구현 후 즉시 위 포맷으로 응답을 출력한다. --add-dir /tmp/kant-worktree-26914 --model Gemini 3.1 Pro (High) --sandbox workspace-write --mode accept-edits --dangerously-skip-permissions
-[python-runner] spawning: ['agy'] (args: 11) cwd=/private/tmp/kant-worktree-26914
-[python-runner] done exit=0 elapsed=149.1s
-[2026-07-23T02:06:20Z] run_with_timeout done exit=0 elapsed=149s
+- retry loop(재시도 루프)가 발생하지 않도록, 한 번의 구현 후 즉시 위 포맷으로 응답을 출력한다. --add-dir /tmp/kant-worktree-46562 --model Gemini 3.1 Pro (High) --sandbox workspace-write --mode accept-edits --dangerously-skip-permissions
+[python-runner] spawning: ['agy'] (args: 11) cwd=/private/tmp/kant-worktree-46562
+[python-runner] done exit=0 elapsed=79.3s
+[2026-07-23T02:43:45Z] run_with_timeout done exit=0 elapsed=79s

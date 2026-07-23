@@ -1,26 +1,17 @@
+```json
 {
   "verdict": "PASS",
-  "summary": "Kant Dashboard Phase 3 읽기전용 MVP 구현 완료",
-  "findings": [],
+  "summary": "dashboard/web/index.html 파일에 좁은 뷰포트(1399px 이하, 850px 이하)를 처리하기 위한 CSS 미디어 쿼리를 추가하여 반응형 레이아웃 버그를 해결했습니다.",
+  "findings": [
+    "기존 CSS는 3컬럼(320px + 1fr + 320px) 구조로 고정되어 있어 화면이 1400px 미만으로 줄어들 때 타이틀 텍스트가 잘리거나 우측 Inspector 레이아웃이 겹치는 문제가 존재했습니다.",
+    "CSS 미디어 쿼리를 추가하여, 1399px 이하 뷰포트에서는 좌측 Runs와 중앙 Pipeline을 상단에 두고 Inspector를 아래로 배치하며, 850px(모바일 및 좁은 화면) 이하에서는 1개의 세로 컬럼으로 차례대로 렌더링되도록 수정했습니다."
+  ],
   "changed_files": [
-    "dashboard/server/main.py",
     "dashboard/web/index.html"
   ],
   "tests_added_or_updated": [],
   "risks": [],
-  "notes_for_reviewer": "요청하신 대로 dashboard/server/main.py 마지막 부분에 FastAPI StaticFiles를 마운트하여 / 경로에서 dashboard/web/ 디렉토리를 서비스하도록 수정했습니다. 기존 API와 보호 정책은 그대로 유지됩니다. 추가로 생성된 dashboard/web/index.html은 빌드 단계 없이 작동하는 단일 파일이며, 실시간 SSE 연결 및 Inspector 중복 방지, 그리고 events.jsonl 및 agents 배열을 분석해 System 단계와 AI 단계를 시각적으로 명확히 분리하여 렌더링하도록 구현했습니다."
+  "notes_for_reviewer": "넓은 화면(1440px 이상)에서는 기존 3컬럼 레이아웃과 스타일을 그대로 유지하며, 자바스크립트 등 다른 로직을 수정하지 않고 순수 CSS 반응형 처리만 적용하여 안전하게 해결했습니다."
 }
-<verdict>PASS</verdict>
-{
-  "verdict": "PASS",
-  "summary": "Kant Dashboard Phase 3 읽기전용 MVP 구현 완료",
-  "findings": [],
-  "changed_files": [
-    "dashboard/server/main.py",
-    "dashboard/web/index.html"
-  ],
-  "tests_added_or_updated": [],
-  "risks": [],
-  "notes_for_reviewer": "요청하신 대로 dashboard/server/main.py 마지막 부분에 FastAPI StaticFiles를 마운트하여 / 경로에서 dashboard/web/ 디렉토리를 서비스하도록 수정했습니다. 기존 API와 보호 정책은 그대로 유지됩니다. 추가로 생성된 dashboard/web/index.html은 빌드 단계 없이 작동하는 단일 파일이며, 실시간 SSE 연결 및 Inspector 중복 방지, 그리고 events.jsonl 및 agents 배열을 분석해 System 단계와 AI 단계를 시각적으로 명확히 분리하여 렌더링하도록 구현했습니다."
-}
+```
 <verdict>PASS</verdict>
