@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # fix-apply.sh — 메타 에이전트가 제안한 패치를 fix/ 브랜치에 안전하게 적용
 #
+# ⚠ 수동 복구 전용(manual recovery) — core runtime에서 자동 호출되지 않는다.
+#   전체 흐름: references/self-repair-subsystem.md
+#
 # 안전 가드 (review critique P0/P1 반영):
 # 1) fix/* 브랜치만 허용 (main/master/기타 명시 거부)
 # 2) 작업 디렉터리는 깨끗해야 함 (unstaged/staged 변경 → 거부)

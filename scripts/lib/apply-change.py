@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """apply-change.py — 메타 에이전트가 제안한 JSON에서 단일 변경을 적용 (argv)
 
+⚠ 수동 복구 전용(manual recovery) — core runtime에서 자동 호출되지 않는다.
+  전체 흐름: references/self-repair-subsystem.md
+
 인라인 python -c 보간 방지를 위해 별도 스크립트로 분리.
 모든 데이터는 sys.argv와 JSON 파일을 통해 받으며, 어떤 보간도 하지 않음.
 

@@ -3,6 +3,9 @@
 #
 # kant-loop 실패 시 메타 에이전트(kant-failure-analyzer)에 전달할
 # 구조화된 컨텍스트를 생성합니다.
+#
+# ⚠ 수동 복구 전용(manual recovery) — core runtime(kant-loop.sh)에서 자동
+#   호출되지 않는다. 사용법·전체 흐름·안전 가드: references/self-repair-subsystem.md
 
 set -Eeuo pipefail
 

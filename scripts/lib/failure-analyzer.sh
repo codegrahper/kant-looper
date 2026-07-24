@@ -4,6 +4,9 @@
 # 출력: root_cause, fix_summary, files_changed, commands_to_run JSON
 # 절대 main 브랜치에 직접 commit 하지 않는다.
 # 모든 수정은 fix/ 브랜치에서 일어나야 한다.
+#
+# ⚠ 수동 복구 전용(manual recovery) — core runtime에서 자동 호출되지 않는다.
+#   상세: references/self-repair-subsystem.md
 
 set -Eeuo pipefail
 

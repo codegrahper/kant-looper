@@ -677,15 +677,25 @@ kant-loop.sh cleanup --apply
 
 ### 호출 실패 시 Fallback
 
-인증 실패 / timeout / rate limit / 형식 오류 / 네트워크 에러 — 모든 실패 모드에 즉시 대응. **claude가 마지막 폴백**이라 작업이 중단되는 일은 거의 없음.
+인증 실패 / timeout / rate limit / 형식 오류 / 네트워크 에러 — 모든 실패 모드에 즉시 대응. 실패한 모델이 속한 난이도 티어(T0~T3)의 다른 provider부터 자동 시도하고, **claude가 마지막 폴백**이라 작업이 중단되는 일은 거의 없음.
 
-상세: `references/archive/hprar/failure-modes.md`, `references/fallback-table.md`
+상세(현행): `references/fallback-table.md`. 과거 HPRAR 실패모드 설계는 historical로 `references/archive/hprar/failure-modes.md`.
 
-### 무진전 감지 + 자동 중단
+### 무진전 처리 (timeout 기반)
 
-routing 가이드 10.2 정책 기반. 같은 diff 3회 / 같은 테스트 실패 2회 / 10회 도구 호출 동안 변화 없음 → 자동 중단.
+과거 HPRAR에는 "같은 diff 반복 / 같은 테스트 실패 / 도구 호출 무변화"를 감지해 자동
+중단하는 no-progress detector가 있었으나 **v0.8에서 제거**됐다 — 호출하는 곳이 전혀 없는
+죽은 코드였다. 현재는 role별 timeout(구현·수정 30분, 검토 15분 등)과 fallback 체인 소진만으로
+무한 루프를 막는다. 별도의 diff/테스트 반복 감지는 없다.
 
-상세: `references/archive/hprar/failure-modes.md` §무진전 감지
+과거 정책의 historical 기록: `references/archive/hprar/failure-modes.md`.
+
+### 수동 복구 subsystem (self-repair)
+
+실패한 run을 메타 에이전트가 분석해 `fix/` 브랜치에 안전하게 패치를 적용하는 별도
+도구 묶음(`failure-context.sh` / `failure-analyzer.sh` / `fix-apply.sh` / `apply-change.py`)이
+있다. **core runtime에서 자동 호출되지 않는 수동 전용**이다 — 사용법·안전 가드 상세는
+`references/self-repair-subsystem.md`.
 
 ### 작업 보고 형식
 
@@ -712,23 +722,28 @@ main에 합치시려면:
 ```
 $SKILL_DIR/                                       # Runtime별 실제 경로는 platform/<runtime>.md 참고
 ├── SKILL.md (지금 보고 있는 파일)
+├── README.md · GLOSSARY.md · MANIFESTO.md · CHANGELOG.md · install.sh
 ├── platform/                                      # Meta Agent Host 축 (Runtime별 UI/설치경로/권한 차이)
-│   ├── claude.md
+│   ├── HOST-CONTRACT.md · README.md
+│   ├── claude-runtime.md
 │   ├── codex.md
 │   └── opencode.md
-├── references/
+├── references/                                    # 현행 운영 문서
 │   ├── multimodel-coding-agent-routing-guide.md  # SSOT 라우팅 가이드
-│   ├── loop-flow.md                              # 라운드/상태 머신
-│   ├── verdict-schema.md                         # JSON verdict 스키마
+│   ├── fallback-table.md                         # 티어/fallback 체인 (코드와 동기)
 │   ├── safety-promises.md                        # 안전 약속 전체
-│   ├── failure-modes.md                          # 실패 모드 + 무진전 감지
-│   ├── fallback-table.md                         # 도구별 fallback 체인
-│   └── agy-cli-notes.md                          # agy(Antigravity) CLI 실전 노트 — sandbox/mode/모델ID 등
+│   ├── agy-cli-notes.md                          # agy(Antigravity) CLI 실전 노트
+│   ├── archive/                                  # historical (HPRAR 설계, 지난 계획) — 현행 아님
+│   │   ├── hprar/                                #   loop-flow / verdict-schema / failure-modes
+│   │   └── plans/                                #   PLAN-lightweight-kant-looper-v0.6.md 등
+│   └── postmortems/                              # 사후 분석 기록
 ├── scripts/
 │   ├── kant-loop.sh                              # 메인 백엔드
 │   ├── adapters/                                 # Worker Provider 축: 5개 어댑터 (codex/grok/opencode/agy/claude)
-│   ├── lib/                                      # 라이브러리 (health/fallback/model-selector/...)
+│   ├── lib/                                      # 라이브러리 (health/fallback/model-selector/state_writer/...)
 │   └── tests/                                    # 시나리오 자동 검증
+├── dashboard/                                     # 읽기전용 관측 Dashboard (optional — server/ + web/)
+├── docs/dashboard/                                # Dashboard 설계 문서 (ARCHITECTURE/STATE-CONTRACT/API/UI-SCOPE)
 └── agents/openai.yaml                            # Codex 전용 인터페이스 메타
 ```
 
@@ -742,4 +757,5 @@ $SKILL_DIR/                                       # Runtime별 실제 경로는 
 > 6. **사용자가 개입하는 순간 그건 nomad-kant-looper가 아닙니다**. 완전 자동이 1차 목표.
 > 7. **칸트는 냉정합니다**. verdict는 verdict대로. 감정/사정 개입 없이 원칙만으로 결정.
 
-상세 backend 동작은 `references/archive/hprar/loop-flow.md` 참조. 그 외 모든 것은 스크립트가 담당.
+현행 backend 동작의 SSOT는 `scripts/kant-loop.sh` 코드 자체다. 과거 HPRAR 라운드/상태머신
+설계는 현행이 아니며 historical 기록으로 `references/archive/hprar/loop-flow.md`에 남아 있다.
